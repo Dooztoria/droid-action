@@ -1,0 +1,383 @@
+import { afterEach, describe, expect, it } from "bun:test";
+import {
+  applyModelPolicyFallback,
+  fetchModelPolicy,
+  isCustomModel,
+  isModelAllowedByPolicy,
+  isModelPolicyError,
+} from "../src/utils/model-policy";
+
+const originalFetch = globalThis.fetch;
+const originalApiKey = process.env.FACTORY_API_KEY;
+
+function mockFetch(handler: () => Promise<Response> | Response) {
+  globalThis.fetch = Object.assign(async () => handler(), {
+    preconnect: () => {},
+  }) as unknown as typeof fetch;
+}
+
+function managedSettingsResponse(
+  modelPolicy: unknown,
+  customModels?: unknown,
+): Response {
+  return new Response(
+    JSON.stringify({ success: true, settings: { modelPolicy, customModels } }),
+    { status: 200, headers: { "Content-Type": "application/json" } },
+  );
+}
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+  if (originalApiKey === undefined) {
+    delete process.env.FACTORY_API_KEY;
+  } else {
+    process.env.FACTORY_API_KEY = originalApiKey;
+  }
+});
+
+describe("isModelPolicyError", () => {
+  it("matches the model policy 403 message with a straight apostrophe", () => {
+    expect(
+      isModelPolicyError(
+        `403 {"detail":"This model is not available due to your organization's security settings."}`,
+      ),
+    ).toBe(true);
+  });
+
+  it("matches the model policy 403 message with a curly apostrophe", () => {
+    expect(
+      isModelPolicyError(
+        "This model is not available due to your organization’s security settings.",
+      ),
+    ).toBe(true);
+  });
+
+  it("does not match unrelated errors", () => {
+    expect(isModelPolicyError("500 Internal Server Error")).toBe(false);
+    expect(isModelPolicyError(undefined)).toBe(false);
+    expect(isModelPolicyError("")).toBe(false);
+  });
+});
+
+describe("isModelAllowedByPolicy", () => {
+  it("allows any model when there is no policy", () => {
+    expect(isModelAllowedByPolicy("gpt-5.2", null)).toBe(true);
+    expect(isModelAllowedByPolicy("gpt-5.2", undefined)).toBe(true);
+  });
+
+  it("denies models on the block list", () => {
+    expect(
+      isModelAllowedByPolicy("gpt-5.2", { blockedModelIds: ["gpt-5.2"] }),
+    ).toBe(false);
+  });
+
+  it("allows everything when allowAllFactoryModels is true", () => {
+    expect(
+      isModelAllowedByPolicy("gpt-5.2", {
+        allowAllFactoryModels: true,
+        allowedModelIds: ["claude-opus-5"],
+      }),
+    ).toBe(true);
+  });
+
+  it("enforces a non-empty allow list", () => {
+    const policy = { allowedModelIds: ["claude-opus-5", "kimi-k3"] };
+    expect(isModelAllowedByPolicy("claude-opus-5", policy)).toBe(true);
+    expect(isModelAllowedByPolicy("gpt-5.2", policy)).toBe(false);
+  });
+
+  it("defers tier aliases to the CLI, which checks the resolved model", () => {
+    const policy = {
+      allowedModelIds: ["gpt-5.6-sol"],
+      blockedModelIds: ["glm-5.3"],
+    };
+    expect(isModelAllowedByPolicy("openai-latest-balanced", policy)).toBe(true);
+    expect(isModelAllowedByPolicy("oss-latest-fast", policy)).toBe(true);
+  });
+
+  it("still enforces the policy on IDs that only resemble tier aliases", () => {
+    const policy = { allowedModelIds: ["gpt-5.6-sol"] };
+    expect(isModelAllowedByPolicy("openai-latest", policy)).toBe(false);
+    expect(isModelAllowedByPolicy("openai-latest-ultra", policy)).toBe(false);
+  });
+
+  it("treats an empty allow list as unrestricted", () => {
+    expect(isModelAllowedByPolicy("gpt-5.2", { allowedModelIds: [] })).toBe(
+      true,
+    );
+  });
+
+  it("allows an org custom model that is absent from the allow list", () => {
+    const policy = {
+      allowedModelIds: ["claude-opus-5"],
+      customModelIds: ["custom:bedrock-sonnet-5-5", "bedrock-sonnet-5-5"],
+    };
+    expect(isModelAllowedByPolicy("bedrock-sonnet-5-5", policy)).toBe(true);
+    expect(isModelAllowedByPolicy("custom:bedrock-sonnet-5-5", policy)).toBe(
+      true,
+    );
+  });
+
+  it("allows a custom: id even when the org lists no custom models", () => {
+    expect(
+      isModelAllowedByPolicy("custom:my-model", {
+        allowedModelIds: ["claude-opus-5"],
+      }),
+    ).toBe(true);
+  });
+
+  it("denies custom models only when allowCustomModels is false", () => {
+    const policy = {
+      allowedModelIds: ["claude-opus-5"],
+      allowCustomModels: false,
+      customModelIds: ["bedrock-sonnet-5-5"],
+    };
+    expect(isModelAllowedByPolicy("bedrock-sonnet-5-5", policy)).toBe(false);
+    expect(isModelAllowedByPolicy("custom:other", policy)).toBe(false);
+    expect(isModelAllowedByPolicy("claude-opus-5", policy)).toBe(true);
+  });
+
+  it("keeps an allowed Factory model whose id a BYOK entry also uses", () => {
+    // A proxy entry { id: "custom:openai-proxy-0", model: "gpt-5.2" } puts
+    // "gpt-5.2" in customModelIds; with custom models disabled the Factory
+    // allow list must still decide.
+    const policy = {
+      allowedModelIds: ["gpt-5.2"],
+      allowCustomModels: false,
+      customModelIds: ["custom:openai-proxy-0", "openai-proxy-0", "gpt-5.2"],
+    };
+    expect(isModelAllowedByPolicy("gpt-5.2", policy)).toBe(true);
+    expect(isModelAllowedByPolicy("custom:openai-proxy-0", policy)).toBe(false);
+  });
+
+  it("still enforces the allow list on unknown non-custom ids", () => {
+    const policy = {
+      allowedModelIds: ["claude-opus-5"],
+      customModelIds: ["bedrock-sonnet-5-5"],
+    };
+    expect(isModelAllowedByPolicy("bedrock-haiku-9", policy)).toBe(false);
+  });
+});
+
+describe("isCustomModel", () => {
+  it("recognizes the custom: prefix without a policy", () => {
+    expect(isCustomModel("custom:foo", null)).toBe(true);
+    expect(isCustomModel("foo", null)).toBe(false);
+  });
+
+  it("recognizes org custom model ids from the policy", () => {
+    const policy = { customModelIds: ["bedrock-sonnet-5-5"] };
+    expect(isCustomModel("bedrock-sonnet-5-5", policy)).toBe(true);
+    expect(isCustomModel("gpt-5.2", policy)).toBe(false);
+  });
+});
+
+describe("fetchModelPolicy", () => {
+  it("parses the model policy from managed settings", async () => {
+    mockFetch(() =>
+      managedSettingsResponse({
+        allowedModelIds: ["claude-opus-5"],
+        allowAllFactoryModels: false,
+      }),
+    );
+
+    const policy = await fetchModelPolicy("fk-test");
+    expect(policy).toEqual({
+      allowedModelIds: ["claude-opus-5"],
+      blockedModelIds: undefined,
+      allowAllFactoryModels: false,
+      allowCustomModels: undefined,
+      customModelIds: [],
+    });
+  });
+
+  it("collects every id a managed custom model can be addressed by", async () => {
+    mockFetch(() =>
+      managedSettingsResponse({ allowedModelIds: ["claude-opus-5"] }, [
+        {
+          id: "custom:bedrock-sonnet-5-5-0",
+          model: "us.anthropic.claude-sonnet-5-5",
+          displayName: "Bedrock Sonnet 5.5",
+          apiKey: "[REDACTED]",
+        },
+        { model: "legacy-model" },
+        "not-a-model",
+        null,
+      ]),
+    );
+
+    const policy = await fetchModelPolicy("fk-test");
+    expect(policy?.customModelIds?.sort()).toEqual(
+      [
+        "custom:bedrock-sonnet-5-5-0",
+        "bedrock-sonnet-5-5-0",
+        "us.anthropic.claude-sonnet-5-5",
+        "custom:us.anthropic.claude-sonnet-5-5",
+        "legacy-model",
+        "custom:legacy-model",
+      ].sort(),
+    );
+  });
+
+  it("parses allowCustomModels", async () => {
+    mockFetch(() =>
+      managedSettingsResponse({
+        allowedModelIds: ["claude-opus-5"],
+        allowCustomModels: false,
+      }),
+    );
+
+    expect((await fetchModelPolicy("fk-test"))?.allowCustomModels).toBe(false);
+  });
+
+  it("returns null when the org has no model policy", async () => {
+    mockFetch(() =>
+      Response.json({ success: true, settings: { ideAutoConnect: true } }),
+    );
+
+    expect(await fetchModelPolicy("fk-test")).toBeNull();
+  });
+
+  it("returns null on non-OK responses", async () => {
+    mockFetch(() => new Response("nope", { status: 401 }));
+
+    expect(await fetchModelPolicy("fk-test")).toBeNull();
+  });
+
+  it("returns null on malformed payloads", async () => {
+    mockFetch(() => new Response("not json", { status: 200 }));
+
+    expect(await fetchModelPolicy("fk-test")).toBeNull();
+  });
+
+  it("returns null on network errors", async () => {
+    mockFetch(() => {
+      throw new Error("connection refused");
+    });
+
+    expect(await fetchModelPolicy("fk-test")).toBeNull();
+  });
+});
+
+describe("applyModelPolicyFallback", () => {
+  const options = { flowLabel: "code review", modelInputName: "review_model" };
+
+  it("keeps the model when it is allowed by the policy", async () => {
+    process.env.FACTORY_API_KEY = "fk-test";
+    mockFetch(() => managedSettingsResponse({ allowedModelIds: ["gpt-5.2"] }));
+
+    const result = await applyModelPolicyFallback(
+      { model: "gpt-5.2", reasoningEffort: "high" },
+      options,
+    );
+    expect(result).toEqual({ model: "gpt-5.2", reasoningEffort: "high" });
+  });
+
+  it("drops the model and returns a note when the policy disallows it", async () => {
+    process.env.FACTORY_API_KEY = "fk-test";
+    mockFetch(() =>
+      managedSettingsResponse({ allowedModelIds: ["claude-opus-5"] }),
+    );
+
+    const result = await applyModelPolicyFallback(
+      { model: "gpt-5.2", reasoningEffort: "high" },
+      options,
+    );
+    expect(result.model).toBeUndefined();
+    expect(result.reasoningEffort).toBeUndefined();
+    expect(result.fallbackNote).toContain("`gpt-5.2`");
+    expect(result.fallbackNote).toContain("`review_model`");
+  });
+
+  it("keeps an org custom model under an allow list that omits it", async () => {
+    process.env.FACTORY_API_KEY = "fk-test";
+    mockFetch(() =>
+      managedSettingsResponse({ allowedModelIds: ["claude-opus-5"] }, [
+        { id: "custom:bedrock-sonnet-5-5", model: "anthropic.claude-sonnet" },
+      ]),
+    );
+
+    const result = await applyModelPolicyFallback(
+      { model: "bedrock-sonnet-5-5", reasoningEffort: "high" },
+      options,
+    );
+    expect(result).toEqual({
+      model: "bedrock-sonnet-5-5",
+      reasoningEffort: "high",
+    });
+  });
+
+  it("drops a custom: model when the org disables custom models", async () => {
+    process.env.FACTORY_API_KEY = "fk-test";
+    mockFetch(() =>
+      managedSettingsResponse({ allowCustomModels: false }, [
+        { id: "custom:bedrock-sonnet-5-5" },
+      ]),
+    );
+
+    const result = await applyModelPolicyFallback(
+      { model: "custom:bedrock-sonnet-5-5" },
+      options,
+    );
+    expect(result.model).toBeUndefined();
+    expect(result.fallbackNote).toContain("`custom:bedrock-sonnet-5-5`");
+  });
+
+  it("drops an unprefixed custom model under an allow list when custom models are disabled", async () => {
+    process.env.FACTORY_API_KEY = "fk-test";
+    mockFetch(() =>
+      managedSettingsResponse(
+        { allowedModelIds: ["claude-opus-5"], allowCustomModels: false },
+        [{ id: "custom:bedrock-sonnet-5-5" }],
+      ),
+    );
+
+    const result = await applyModelPolicyFallback(
+      { model: "bedrock-sonnet-5-5" },
+      options,
+    );
+    expect(result.model).toBeUndefined();
+  });
+
+  it("keeps the model when the policy lookup fails", async () => {
+    process.env.FACTORY_API_KEY = "fk-test";
+    mockFetch(() => {
+      throw new Error("connection refused");
+    });
+
+    const result = await applyModelPolicyFallback(
+      { model: "gpt-5.2", reasoningEffort: "high" },
+      options,
+    );
+    expect(result).toEqual({ model: "gpt-5.2", reasoningEffort: "high" });
+  });
+
+  it("skips the check when there is no API key", async () => {
+    delete process.env.FACTORY_API_KEY;
+    let fetchCalled = false;
+    mockFetch(() => {
+      fetchCalled = true;
+      return managedSettingsResponse({ allowedModelIds: ["claude-opus-5"] });
+    });
+
+    const result = await applyModelPolicyFallback(
+      { model: "gpt-5.2" },
+      options,
+    );
+    expect(result.model).toBe("gpt-5.2");
+    expect(fetchCalled).toBe(false);
+  });
+
+  it("passes through when no model was requested", async () => {
+    process.env.FACTORY_API_KEY = "fk-test";
+    let fetchCalled = false;
+    mockFetch(() => {
+      fetchCalled = true;
+      return managedSettingsResponse({ allowedModelIds: ["claude-opus-5"] });
+    });
+
+    const result = await applyModelPolicyFallback({}, options);
+    expect(result.model).toBeUndefined();
+    expect(fetchCalled).toBe(false);
+  });
+});

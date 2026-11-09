@@ -1,0 +1,142 @@
+import * as core from "@actions/core";
+import type { GitHubContext } from "../../github/context";
+import { fetchRepoDefaultBranch } from "../../github/data/pr-fetcher";
+import { createPrompt } from "../../create-prompt";
+import { prepareMcpTools } from "../../mcp/install-mcp-server";
+import { normalizeDroidArgs, parseAllowedTools } from "../../utils/parse-tools";
+import { isEntityContext } from "../../github/context";
+import { generateSecurityReportPrompt } from "../../create-prompt/templates/security-report-prompt";
+import type { Octokits } from "../../github/api/client";
+import type { PrepareResult } from "../../prepare/types";
+import { applyModelPolicyFallback } from "../../utils/model-policy";
+import { assertDroidRunType, DroidRunType } from "../../run-type";
+
+export type ScanScope = { type: "full" } | { type: "scheduled"; days: number };
+
+type SecurityScanCommandOptions = {
+  context: GitHubContext;
+  octokit: Octokits;
+  githubToken: string;
+  scanScope: ScanScope;
+  runType?: DroidRunType | null;
+};
+
+export async function prepareSecurityScanMode({
+  context,
+  octokit,
+  githubToken,
+  scanScope,
+  runType = DroidRunType.SecurityScan,
+}: SecurityScanCommandOptions): Promise<PrepareResult> {
+  if (!isEntityContext(context)) {
+    throw new Error("Security scan command requires an entity event context");
+  }
+  assertDroidRunType(runType, DroidRunType.SecurityScan);
+
+  // Fetch the repository's default branch (could be main, master, develop, etc.)
+  const defaultBranch = await fetchRepoDefaultBranch({
+    octokits: octokit,
+    repository: context.repository,
+  });
+
+  const date = new Date().toISOString().split("T")[0];
+  const branchName = `droid/security-report-${date}`;
+  // Bind evidence to the repository's original revision before model execution.
+  const source = await octokit.rest.repos.getCommit({
+    owner: context.repository.owner,
+    repo: context.repository.repo,
+    ref: defaultBranch,
+  });
+  const sourceRevision = source.data.sha;
+  if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(sourceRevision))
+    throw new Error("Security scan requires an immutable original revision");
+  const { viewer } = await octokit.graphql<{ viewer: { login: string } }>(
+    "query DroidSecurityReportAuthor { viewer { login } }",
+  );
+  if (!viewer?.login?.trim() || !context.actor.trim())
+    throw new Error(
+      "Security scan requires an authenticated report author and actor",
+    );
+
+  const branchInfo = {
+    baseBranch: defaultBranch,
+    droidBranch: branchName,
+    currentBranch: branchName,
+  };
+
+  await createPrompt({
+    githubContext: context,
+    baseBranch: branchInfo.baseBranch,
+    droidBranch: branchInfo.droidBranch,
+    generatePrompt: (ctx) =>
+      generateSecurityReportPrompt(ctx, scanScope, branchName, sourceRevision),
+  });
+  // Signal that security skills should be installed
+  core.setOutput("install_security_skills", "true");
+
+  const rawUserArgs = process.env.DROID_ARGS || "";
+  const normalizedUserArgs = normalizeDroidArgs(rawUserArgs);
+  const userAllowedMCPTools = parseAllowedTools(normalizedUserArgs).filter(
+    (tool) => tool.startsWith("github_") && tool.includes("___"),
+  );
+
+  const baseTools = [
+    "Read",
+    "Grep",
+    "Glob",
+    "LS",
+    "Execute",
+    "github_comment___update_droid_comment",
+    "github_pr___update_pr_description",
+  ];
+
+  const allowedTools = Array.from(
+    new Set([...baseTools, ...userAllowedMCPTools]),
+  );
+
+  const mcpTools = await prepareMcpTools({
+    githubToken,
+    owner: context.repository.owner,
+    repo: context.repository.repo,
+    runType,
+    allowedTools,
+    mode: "tag",
+    context,
+    securityReportTarget: {
+      sourceRevision,
+      branch: branchName,
+      baseBranch: defaultBranch,
+      author: viewer.login,
+    },
+  });
+
+  const droidArgParts: string[] = [];
+  droidArgParts.push(`--enabled-tools "${allowedTools.join(",")}"`);
+
+  // Add model override if specified (prefer SECURITY_MODEL, fallback to REVIEW_MODEL)
+  const { model: securityModel, fallbackNote } = await applyModelPolicyFallback(
+    {
+      model:
+        process.env.SECURITY_MODEL?.trim() || process.env.REVIEW_MODEL?.trim(),
+    },
+    { flowLabel: "security scan", modelInputName: "security_model" },
+  );
+  if (securityModel) {
+    droidArgParts.push(`--model "${securityModel}"`);
+  }
+  if (fallbackNote) {
+    core.setOutput("model_fallback_note", fallbackNote);
+  }
+
+  if (normalizedUserArgs) {
+    droidArgParts.push(normalizedUserArgs);
+  }
+
+  core.setOutput("droid_args", droidArgParts.join(" ").trim());
+  core.setOutput("mcp_tools", mcpTools);
+
+  return {
+    branchInfo,
+    mcpTools,
+  };
+}

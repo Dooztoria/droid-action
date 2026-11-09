@@ -1,0 +1,35 @@
+# factory/droid-review.yml
+#
+# Drop this file at `factory/droid-review.yml` in your project, then
+# add a single `include: - local: "factory/droid-review.yml"` line to
+# your `.gitlab-ci.yml` (see ../.gitlab-ci.yml for the entry-point
+# example).
+#
+# Prerequisites (one-time, set in Project / Group → Settings → CI/CD):
+#
+#   * FACTORY_API_KEY — masked variable. Get one at
+#     https://app.factory.ai/settings/api-keys
+#   * GITLAB_TOKEN    — masked variable. An access token with `api` scope,
+#     owned by whichever GitLab account should post review comments. The
+#     token owner IS the poster. Prefer a project access token with the
+#     Reporter role and a short expiry: see "Credential scope" in
+#     docs/gitlab-setup.md.
+
+include:
+  - project: "factory-components/droid-action"
+    ref: main
+    file: "/templates/droid-review.yml"
+    inputs:
+      automatic_review: "true" # run on every MR event; "false" disables
+      review_depth: "deep" # "deep" (thorough) or "shallow" (fast)
+      include_suggestions: "true" # post code-suggestion blocks for high-confidence fixes
+      automatic_security_review: "true" # flag vulns alongside the regular review; "false" opts out
+      security_block_on_critical: "true" # block merge on CRITICAL findings (when security review is on)
+      security_block_on_high: "false" # block merge on HIGH findings
+      # org_guidelines_source: "my-group/review-guidelines" # org-wide guidelines: file path, raw URL, clone URL, or project path
+      # org_guidelines_path: "review-guidelines.md" # git sources only: markdown file inside the repo
+
+droid-review:
+  variables:
+    FACTORY_API_KEY: $FACTORY_API_KEY
+    GITLAB_TOKEN: $GITLAB_TOKEN

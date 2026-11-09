@@ -1,0 +1,53 @@
+export enum ReviewDepth {
+  Shallow = "shallow",
+  Deep = "deep",
+}
+
+// Tier aliases are resolved by the Droid CLI (installed fresh on every run),
+// so presets follow Factory's current recommendation without a new release.
+const SHALLOW_DEFAULTS = {
+  model: "openai-latest-fast",
+  reasoningEffort: undefined as string | undefined,
+};
+
+const DEEP_DEFAULTS = {
+  model: "openai-latest-balanced",
+  reasoningEffort: "medium" as string | undefined,
+};
+
+export const REVIEW_DEPTH_PRESETS: Record<
+  ReviewDepth,
+  { model: string; reasoningEffort: string | undefined }
+> = {
+  [ReviewDepth.Shallow]: SHALLOW_DEFAULTS,
+  [ReviewDepth.Deep]: DEEP_DEFAULTS,
+};
+
+/** Normalize action/environment input, not strict repository file policy. */
+export function normalizeReviewDepth(reviewDepth?: string): ReviewDepth {
+  const value = reviewDepth?.trim().toLowerCase();
+  const depth =
+    value === ReviewDepth.Shallow ? ReviewDepth.Shallow : ReviewDepth.Deep;
+  if (value && value !== ReviewDepth.Deep && value !== ReviewDepth.Shallow) {
+    console.warn("Unknown review_depth; falling back to deep.");
+  }
+  return depth;
+}
+
+/**
+ * Resolve the effective review model and reasoning effort based on depth.
+ * Explicit overrides (review_model, reasoning_effort) take priority over depth presets.
+ */
+export function resolveReviewConfig(options?: {
+  reviewModel?: string;
+  reasoningEffort?: string;
+  reviewDepth?: string;
+}): { model: string; reasoningEffort: string | undefined } {
+  const defaults =
+    REVIEW_DEPTH_PRESETS[normalizeReviewDepth(options?.reviewDepth)];
+
+  return {
+    model: options?.reviewModel || defaults.model,
+    reasoningEffort: options?.reasoningEffort || defaults.reasoningEffort,
+  };
+}

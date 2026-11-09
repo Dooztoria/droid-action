@@ -1,0 +1,746 @@
+import * as core from "@actions/core";
+import { exec, spawn } from "child_process";
+import { promisify } from "util";
+import { stat } from "fs/promises";
+import { parse as parseShellArgs } from "shell-quote";
+import { retryWithBackoff } from "./utils/retry";
+import {
+  condenseInvalidModelError,
+  describeModelFallback,
+  getLegacyTierAliasModel,
+  getModelArg,
+  isInvalidModelError,
+  isModelPolicyError,
+  replaceModelArg,
+  stripModelArgs,
+} from "./utils/model-policy-error";
+import {
+  describeUsageLimitError,
+  isUsageLimitError,
+} from "./utils/usage-limit-error";
+import { redactCredentials } from "./utils/redact-credentials";
+
+const execAsync = promisify(exec);
+
+// Variables Droid has no use for. The OIDC pair mints identity tokens for this
+// workflow, the runtime tokens reach the Actions cache and artifact services,
+// the file-command paths set environment variables, PATH entries and outputs
+// for later steps, and INPUT_* repeats this step's inputs, MCP server tokens
+// included. Withholding them keeps them out of anything Droid or a tool prints.
+// It is not a sandbox: Droid runs as the same user and can still read the
+// environment of the processes that started it.
+const WITHHELD_ENV_NAMES = new Set([
+  "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+  "ACTIONS_ID_TOKEN_REQUEST_URL",
+  "ACTIONS_RUNTIME_TOKEN",
+  "ACTIONS_RUNTIME_URL",
+  "ACTIONS_CACHE_URL",
+  "ACTIONS_RESULTS_URL",
+  "GITHUB_ENV",
+  "GITHUB_PATH",
+  "GITHUB_OUTPUT",
+  "GITHUB_STATE",
+  "GITHUB_STEP_SUMMARY",
+  "OVERRIDE_GITHUB_TOKEN",
+  "DEFAULT_WORKFLOW_TOKEN",
+  "WORKFLOW_GITHUB_TOKEN",
+]);
+
+export function buildDroidEnv(
+  base: NodeJS.ProcessEnv,
+  extra: Record<string, string>,
+): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [name, value] of Object.entries(base)) {
+    if (
+      value === undefined ||
+      WITHHELD_ENV_NAMES.has(name) ||
+      name.startsWith("INPUT_") ||
+      name.startsWith("COMMAND_")
+    ) {
+      continue;
+    }
+    env[name] = value;
+  }
+  return { ...env, ...extra };
+}
+
+/**
+ * Removes MCP servers this run registered. `droid mcp add` stores each
+ * server's env, GitHub token included, in ~/.factory/mcp.json, where a later
+ * Droid run in the same job (the validator) would otherwise start them again
+ * and could read the token.
+ */
+async function unregisterMcpServers(names: readonly string[]): Promise<void> {
+  for (const name of names) {
+    try {
+      await execAsync(`droid mcp remove ${name}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(
+        `Could not remove MCP server ${name}: ${redactEnvSecrets(message)}`,
+      );
+    }
+  }
+}
+
+/** Redact inline `--env KEY=value` secrets before logging a command string. */
+function redactEnvSecrets(text: string): string {
+  return text.replace(/--env\s+(\S+?)=\S+/g, "--env $1=***");
+}
+
+const BASE_ARGS = [
+  "exec",
+  "--output-format",
+  "stream-json",
+  "--skip-permissions-unsafe",
+];
+
+/**
+ * Sanitizes JSON output to remove sensitive information when full output is disabled
+ * Returns a safe summary message or null if the message should be completely suppressed
+ */
+function sanitizeJsonOutput(
+  jsonObj: any,
+  showFullOutput: boolean,
+): string | null {
+  if (showFullOutput) {
+    // Full output is the raw transcript, tool output included, and the job
+    // log is public on public repositories.
+    return redactCredentials(JSON.stringify(jsonObj, null, 2));
+  }
+
+  // In non-full-output mode, provide minimal safe output
+  const type = jsonObj.type;
+  const subtype = jsonObj.subtype;
+
+  // System initialization - safe to show
+  if (type === "system" && subtype === "init") {
+    return JSON.stringify(
+      {
+        type: "system",
+        subtype: "init",
+        message: "Droid Exec initialized",
+        model: jsonObj.model || "unknown",
+      },
+      null,
+      2,
+    );
+  }
+
+  // Result messages - Always show the final result
+  if (type === "result") {
+    // These messages contain the final result and should always be visible
+    return JSON.stringify(
+      {
+        type: "result",
+        subtype: jsonObj.subtype,
+        is_error: jsonObj.is_error,
+        duration_ms: jsonObj.duration_ms,
+        num_turns: jsonObj.num_turns,
+        total_cost_usd: jsonObj.total_cost_usd,
+        permission_denials: jsonObj.permission_denials,
+      },
+      null,
+      2,
+    );
+  }
+
+  // For any other message types, suppress completely in non-full-output mode
+  return null;
+}
+
+export type DroidOptions = {
+  droidArgs?: string;
+  reasoningEffort?: string;
+  pathToDroidExecutable?: string;
+  allowedTools?: string;
+  disallowedTools?: string;
+  /**
+   * Upper bound on assistant turns before the run is aborted. Enforced here
+   * by watching the stream-json output, since `droid exec` has no turn limit
+   * of its own. Empty disables the cap.
+   */
+  maxTurns?: string;
+  mcpTools?: string;
+  systemPrompt?: string;
+  appendSystemPrompt?: string;
+  showFullOutput?: string;
+  isolatedProfile?: { cwd: string; env: Record<string, string> };
+};
+
+export class IsolatedDroidError extends Error {
+  constructor(
+    message: string,
+    readonly exitCode: number,
+  ) {
+    super(message);
+    this.name = "IsolatedDroidError";
+  }
+}
+
+type PreparedConfig = {
+  droidArgs: string[];
+  promptPath: string;
+  env: Record<string, string>;
+};
+
+export function parseMaxTurns(value: string | undefined): number | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(
+      `max_turns must be a positive integer, got ${JSON.stringify(value)}`,
+    );
+  }
+  return parsed;
+}
+
+/**
+ * Counts assistant turns in `droid exec --output-format stream-json` output.
+ *
+ * One assistant turn fans out into several events (`reasoning`, `message`,
+ * `tool_call`) that share the assistant message id (`messageId` on
+ * tool_call, `id` on the others), so turns are counted as distinct ids.
+ * Subagents run as separate processes and never appear on this stream, so
+ * the count covers the root session only.
+ */
+export function createTurnCounter() {
+  const seen = new Set<string>();
+  return {
+    get count() {
+      return seen.size;
+    },
+    /** Returns the turn count after observing `event`. */
+    observe(event: unknown): number {
+      if (typeof event !== "object" || event === null) return seen.size;
+      const e = event as Record<string, unknown>;
+      let id: unknown;
+      if (e.type === "tool_call") {
+        id = e.messageId;
+      } else if (
+        (e.type === "message" && e.role === "assistant") ||
+        e.type === "reasoning"
+      ) {
+        id = e.id;
+      }
+      if (typeof id === "string" && id) {
+        seen.add(id);
+      }
+      return seen.size;
+    },
+  };
+}
+
+export class MaxTurnsExceededError extends Error {
+  constructor(public readonly maxTurns: number) {
+    super(
+      `Droid Exec exceeded the maximum of ${maxTurns} turns and was stopped. ` +
+        "This usually means the agent got stuck in a loop.",
+    );
+    this.name = "MaxTurnsExceededError";
+  }
+}
+
+/**
+ * The organization's usage limit (or a BYOK provider's balance) is exhausted.
+ * Limits reset on a 5-hour/weekly/monthly schedule, so re-running within
+ * seconds cannot succeed; each retry only opens another failed session.
+ */
+export class UsageLimitError extends Error {
+  constructor(detail: string) {
+    super(
+      `Droid could not run because a usage limit was reached: ${redactCredentials(detail)}`,
+    );
+    this.name = "UsageLimitError";
+  }
+}
+
+export function prepareRunConfig(
+  promptPath: string,
+  options: DroidOptions,
+): PreparedConfig {
+  const droidArgs = [...BASE_ARGS];
+
+  // Add reasoning effort only when explicitly requested
+  if (options.reasoningEffort?.trim()) {
+    droidArgs.push("--reasoning-effort", options.reasoningEffort.trim());
+  }
+
+  // Parse and add user's custom Droid arguments
+  if (options.droidArgs?.trim()) {
+    const parsed = parseShellArgs(options.droidArgs);
+    const customArgs = parsed.filter(
+      (arg): arg is string => typeof arg === "string",
+    );
+    droidArgs.push(...customArgs);
+  }
+
+  droidArgs.push("-f", promptPath);
+
+  const customEnv: Record<string, string> = {};
+
+  if (process.env.INPUT_ACTION_INPUTS_PRESENT) {
+    customEnv.GITHUB_ACTION_INPUTS = process.env.INPUT_ACTION_INPUTS_PRESENT;
+  }
+
+  return {
+    droidArgs,
+    promptPath,
+    env: customEnv,
+  };
+}
+
+export async function runDroid(promptPath: string, options: DroidOptions) {
+  const registeredMcpServers: string[] = [];
+  // If MCP tools config is provided, register servers via `droid mcp add` before running exec
+  if (options.mcpTools && options.mcpTools.trim()) {
+    try {
+      const cfg = JSON.parse(options.mcpTools);
+      const servers = cfg?.mcpServers || {};
+      const serverNames = Object.keys(servers);
+
+      if (serverNames.length > 0) {
+        console.log(
+          `Registering ${serverNames.length} MCP servers: ${serverNames.join(", ")}`,
+        );
+
+        for (const [name, def] of Object.entries<any>(servers)) {
+          const cmd = [def.command, ...(def.args || [])]
+            .filter(Boolean)
+            .join(" ");
+
+          // Build env flags
+          const envFlags = Object.entries(def.env || {})
+            .map(([k, v]) => `--env ${k}=${String(v)}`)
+            .join(" ");
+
+          const addCmd = `droid mcp add ${name} "${cmd}" ${envFlags}`.trim();
+
+          try {
+            await retryWithBackoff(
+              async () => {
+                // Remove existing server if present (ignore errors) before each attempt
+                try {
+                  await execAsync(`droid mcp remove ${name}`);
+                } catch (_) {
+                  // Ignore - server might not exist
+                }
+                try {
+                  await execAsync(addCmd, { env: { ...process.env } });
+                } catch (err) {
+                  // Redact inline --env secrets before they reach any log or rethrow.
+                  const message =
+                    err instanceof Error ? err.message : String(err);
+                  throw new Error(redactEnvSecrets(message));
+                }
+              },
+              { maxAttempts: 3, initialDelayMs: 2000, maxDelayMs: 10000 },
+            );
+            registeredMcpServers.push(name);
+            console.log(`  ✓ Registered MCP server: ${name}`);
+          } catch (e) {
+            const message = e instanceof Error ? e.message : String(e);
+            console.error(
+              `  ✗ Failed to register MCP server ${name}:`,
+              message,
+            );
+            throw new Error(message);
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Failed to register MCP servers:", e);
+      await unregisterMcpServers(registeredMcpServers);
+      // Don't continue without MCP if we were expecting it
+      throw new Error(`MCP server registration failed: ${e}`);
+    }
+  }
+
+  const config = prepareRunConfig(promptPath, options);
+
+  // Log prompt file size
+  let promptSize = "unknown";
+  try {
+    const stats = await stat(config.promptPath);
+    promptSize = stats.size.toString();
+  } catch (e) {
+    // Ignore error
+  }
+
+  console.log(`Prompt file size: ${promptSize} bytes`);
+
+  // Log custom environment variables if any
+  const customEnvKeys = Object.keys(config.env).filter(
+    (key) => key !== "DROID_ACTION_INPUTS_PRESENT",
+  );
+  if (customEnvKeys.length > 0) {
+    console.log(`Custom environment variables: ${customEnvKeys.join(", ")}`);
+  }
+
+  // Log custom arguments if any
+  if (options.droidArgs && options.droidArgs.trim() !== "") {
+    console.log(`Custom Droid arguments: ${options.droidArgs}`);
+
+    // Check for deprecated MCP tool naming
+    const enabledToolsMatch = options.droidArgs.match(
+      /--enabled-tools\s+["\']?([^"\']+)["\']?/,
+    );
+    if (enabledToolsMatch && enabledToolsMatch[1]) {
+      const tools = enabledToolsMatch[1].split(",").map((t) => t.trim());
+      const oldStyleTools = tools.filter((t) => t.startsWith("mcp__"));
+
+      if (oldStyleTools.length > 0) {
+        console.warn(
+          `Warning: Found ${oldStyleTools.length} tools with deprecated mcp__ prefix. Update to new pattern (e.g., github_comment___update_droid_comment)`,
+        );
+      }
+    }
+  }
+
+  // Output to console
+  console.log(`Running Droid Exec with prompt from file: ${config.promptPath}`);
+  console.log(`Full command: droid ${config.droidArgs.join(" ")}`);
+
+  // Use custom executable path if provided, otherwise default to "droid"
+  const droidExecutable = options.pathToDroidExecutable || "droid";
+
+  // Determine if full output should be shown
+  // Show full output if explicitly set to "true" OR if GitHub Actions debug mode is enabled
+  const isDebugMode = process.env.ACTIONS_STEP_DEBUG === "true";
+  let showFullOutput = options.showFullOutput === "true" || isDebugMode;
+
+  if (isDebugMode && options.showFullOutput !== "false") {
+    console.log("Debug mode detected - showing full output");
+    showFullOutput = true;
+  } else if (!showFullOutput) {
+    console.log("Running Droid Exec (full output hidden for security)...");
+    console.log(
+      "Rerun in debug mode or enable `show_full_output: true` in your workflow file for full output.",
+    );
+  }
+
+  const maxTurns = parseMaxTurns(options.maxTurns);
+  if (maxTurns !== null) {
+    console.log(`Turn limit: ${maxTurns}`);
+  }
+
+  // Run Droid Exec with retry for transient failures. Uses the shared
+  // retryWithBackoff so backoff timing lives in one place (3 total attempts,
+  // 5s then 10s delays).
+  let lastExitCode = 1;
+  let currentDroidArgs = config.droidArgs;
+  const requestedModel = getModelArg(config.droidArgs);
+  let modelArgsStripped = false;
+  type ResultEvent = { is_error?: boolean; result?: string };
+  let lastResultEvent: ResultEvent | null = null;
+  // Fast client-side failures (e.g. an invalid --model value) print to
+  // stderr and exit before any stream-json result event is emitted, so keep
+  // a bounded tail of stderr as an error-message fallback.
+  const STDERR_TAIL_LIMIT = 1500;
+  let stderrTail = "";
+  // In stream-json mode a fatal agent-loop error (402 usage limit, 403 model
+  // policy, provider outage) is reported as
+  // `{type:"error",source:"agent_loop",message}` before the process exits
+  // non-zero; there is no result event carrying it.
+  let lastAgentLoopError: string | null = null;
+  // Indirection defeats TS control-flow narrowing: the variables are only
+  // assigned inside stream handler closures, so direct reads after the
+  // retry loop would otherwise be narrowed to their initial values.
+  const getLastResultEvent = (): ResultEvent | null => lastResultEvent;
+  const getStderrTail = (): string => stderrTail;
+  const getLastAgentLoopError = (): string | null => lastAgentLoopError;
+
+  const runDroidOnce = (): Promise<number> => {
+    stderrTail = "";
+    lastAgentLoopError = null;
+    const turns = createTurnCounter();
+    let turnLimitHit = false;
+    const droidProcess = spawn(droidExecutable, currentDroidArgs, {
+      stdio: ["ignore", "pipe", "pipe"],
+      env:
+        options.isolatedProfile?.env ?? buildDroidEnv(process.env, config.env),
+      ...(options.isolatedProfile ? { cwd: options.isolatedProfile.cwd } : {}),
+    });
+
+    const stopForTurnLimit = () => {
+      if (turnLimitHit) return;
+      turnLimitHit = true;
+      console.error(
+        `Droid Exec reached the turn limit (${maxTurns}); stopping the process`,
+      );
+      droidProcess.kill("SIGTERM");
+      // Give the CLI a moment to flush and exit cleanly before forcing it.
+      const forceKill = setTimeout(() => {
+        if (droidProcess.exitCode === null) {
+          droidProcess.kill("SIGKILL");
+        }
+      }, 5000);
+      forceKill.unref();
+    };
+
+    const writeStderr = (chunk: string): void => {
+      const text = redactCredentials(chunk);
+      process.stderr.write(text);
+      stderrTail = (stderrTail + text).slice(-STDERR_TAIL_LIMIT);
+    };
+    // Redact whole lines so a credential split across two chunks still matches.
+    let stderrBuffer = "";
+    droidProcess.stderr.on("data", (data) => {
+      stderrBuffer += data.toString();
+      const end = stderrBuffer.lastIndexOf("\n");
+      if (end === -1) return;
+      writeStderr(stderrBuffer.slice(0, end + 1));
+      stderrBuffer = stderrBuffer.slice(end + 1);
+    });
+
+    droidProcess.stderr.on("end", () => {
+      if (stderrBuffer) {
+        writeStderr(stderrBuffer);
+        stderrBuffer = "";
+      }
+    });
+
+    droidProcess.stderr.on("error", (error) => {
+      console.error("Error reading Droid stderr:", error);
+    });
+
+    // Handle Droid process errors
+    droidProcess.on("error", (error) => {
+      console.error("Error spawning Droid process:", error);
+    });
+
+    // Capture output for parsing execution metrics
+    let sessionId: string | undefined;
+    let stdoutBuffer = "";
+    const handleStdoutLine = (line: string): void => {
+      if (line.trim() === "") return;
+
+      try {
+        const parsed = JSON.parse(line);
+        if (!sessionId && typeof parsed === "object" && parsed !== null) {
+          const detectedSessionId = parsed.session_id;
+          if (
+            typeof detectedSessionId === "string" &&
+            detectedSessionId.trim()
+          ) {
+            sessionId = detectedSessionId;
+            console.log(`Detected Droid session: ${sessionId}`);
+          }
+        }
+        if (
+          typeof parsed === "object" &&
+          parsed !== null &&
+          parsed.type === "result"
+        ) {
+          lastResultEvent = {
+            is_error: parsed.is_error === true,
+            result:
+              typeof parsed.result === "string" ? parsed.result : undefined,
+          };
+        }
+        if (
+          typeof parsed === "object" &&
+          parsed !== null &&
+          parsed.type === "error" &&
+          parsed.source === "agent_loop" &&
+          typeof parsed.message === "string" &&
+          parsed.message.trim()
+        ) {
+          lastAgentLoopError = parsed.message;
+        }
+        if (
+          maxTurns !== null &&
+          !turnLimitHit &&
+          turns.observe(parsed) > maxTurns
+        ) {
+          stopForTurnLimit();
+        }
+        const sanitizedOutput = sanitizeJsonOutput(parsed, showFullOutput);
+
+        if (sanitizedOutput) {
+          process.stdout.write(`${sanitizedOutput}\n`);
+        }
+      } catch {
+        // Not a JSON object
+        if (showFullOutput) {
+          process.stdout.write(`${redactCredentials(line)}\n`);
+        }
+        // In non-full-output mode, suppress non-JSON output
+      }
+    };
+
+    droidProcess.stdout.on("data", (data) => {
+      stdoutBuffer += data.toString();
+      const lines = stdoutBuffer.split("\n");
+      stdoutBuffer = lines.pop() ?? "";
+      for (const line of lines) {
+        handleStdoutLine(line);
+      }
+    });
+
+    droidProcess.stdout.on("end", () => {
+      if (stdoutBuffer) {
+        handleStdoutLine(stdoutBuffer);
+        stdoutBuffer = "";
+      }
+    });
+
+    // Handle stdout errors
+    droidProcess.stdout.on("error", (error) => {
+      console.error("Error reading Droid stdout:", error);
+    });
+
+    // Wait for Droid Exec to finish
+    return new Promise<number>((resolve, reject) => {
+      droidProcess.on("close", (code) => {
+        if (turnLimitHit) {
+          reject(new MaxTurnsExceededError(maxTurns!));
+          return;
+        }
+        resolve(code || 0);
+      });
+
+      droidProcess.on("error", (error) => {
+        console.error("Droid process error:", error);
+        resolve(1);
+      });
+    });
+  };
+
+  let turnCapError: MaxTurnsExceededError | null = null;
+  const getTurnCapError = (): MaxTurnsExceededError | null => turnCapError;
+  let usageLimitError: UsageLimitError | null = null;
+  const getUsageLimitError = (): UsageLimitError | null => usageLimitError;
+
+  try {
+    await retryWithBackoff(
+      async () => {
+        try {
+          lastExitCode = await runDroidOnce();
+          // A CLI that predates tier aliases rejects them before doing any
+          // work; rerun right away with the equivalent concrete model so the
+          // review keeps its tier and the user sees no fallback note.
+          const currentModel = getModelArg(currentDroidArgs);
+          const legacyModel = getLegacyTierAliasModel(currentModel);
+          if (
+            lastExitCode !== 0 &&
+            legacyModel &&
+            isInvalidModelError(getStderrTail())
+          ) {
+            console.log(
+              `The installed Droid CLI does not recognize the tier alias ${currentModel}; using ${legacyModel}`,
+            );
+            currentDroidArgs = replaceModelArg(currentDroidArgs, legacyModel);
+            lastExitCode = await runDroidOnce();
+          }
+        } catch (error) {
+          if (error instanceof MaxTurnsExceededError) {
+            turnCapError = error;
+            lastExitCode = 1;
+          }
+          throw error;
+        }
+        if (lastExitCode !== 0) {
+          console.log(`Droid Exec exited with code ${lastExitCode}`);
+          const agentLoopError = getLastAgentLoopError();
+          if (isUsageLimitError(agentLoopError)) {
+            usageLimitError = new UsageLimitError(
+              describeUsageLimitError(agentLoopError!),
+            );
+            throw usageLimitError;
+          }
+          // If the failure was caused by the requested model being rejected
+          // (blocked by the org's model policy, or not a recognized model
+          // id), retry without --model so droid exec falls back to the
+          // organization's default model.
+          const resultEvent = getLastResultEvent();
+          const policyBlocked =
+            (resultEvent?.is_error === true &&
+              isModelPolicyError(resultEvent.result)) ||
+            isModelPolicyError(agentLoopError) ||
+            isModelPolicyError(getStderrTail());
+          const invalidModel = isInvalidModelError(getStderrTail());
+          if (
+            !modelArgsStripped &&
+            (policyBlocked || invalidModel) &&
+            currentDroidArgs.some(
+              (arg) => arg === "--model" || arg.startsWith("--model="),
+            )
+          ) {
+            modelArgsStripped = true;
+            currentDroidArgs = stripModelArgs(currentDroidArgs);
+            const reason = policyBlocked
+              ? "is not allowed by your organization's model policy"
+              : "is not a recognized model id";
+            console.warn(
+              `The requested model${requestedModel ? ` ${requestedModel}` : ""} ${reason}; retrying with the organization's default model`,
+            );
+            core.setOutput(
+              "model_fallback_note",
+              // Name what the workflow asked for, not a tier-alias stand-in.
+              describeModelFallback({ policyBlocked, model: requestedModel }),
+            );
+          }
+          throw new Error(`Droid Exec exited with code ${lastExitCode}`);
+        }
+      },
+      {
+        maxAttempts: 3,
+        initialDelayMs: 5000,
+        maxDelayMs: 20000,
+        // A runaway agent is not a transient failure; re-running it would
+        // only repeat the loop. A usage limit will not reset within the
+        // backoff window either.
+        shouldRetry: (error) =>
+          !(
+            error instanceof MaxTurnsExceededError ||
+            error instanceof UsageLimitError
+          ),
+      },
+    );
+    await unregisterMcpServers(registeredMcpServers);
+    core.setOutput("conclusion", "success");
+    return;
+  } catch (_) {
+    await unregisterMcpServers(registeredMcpServers);
+    const capError = getTurnCapError();
+    const limitError = getUsageLimitError();
+    if (!capError && !limitError) {
+      // All retry attempts exhausted
+      console.error(
+        `Droid Exec failed after 3 total attempts (exit code: ${lastExitCode})`,
+      );
+    }
+    const finalResultEvent = getLastResultEvent();
+    const finalAgentLoopError = getLastAgentLoopError()?.trim();
+    let finalStderrTail = getStderrTail().trim();
+    if (isInvalidModelError(finalStderrTail)) {
+      finalStderrTail = condenseInvalidModelError(finalStderrTail);
+    }
+    const rawErrorMessage = capError
+      ? capError.message
+      : limitError
+        ? limitError.message
+        : finalResultEvent?.is_error && finalResultEvent.result?.trim()
+          ? finalResultEvent.result.trim()
+          : finalAgentLoopError
+            ? finalAgentLoopError
+            : finalStderrTail
+              ? `Droid Exec exited with code ${lastExitCode}:\n${finalStderrTail}`
+              : `Droid Exec exited with code ${lastExitCode}`;
+    // The error message is posted to the pull request.
+    const redactedErrorMessage = redactCredentials(rawErrorMessage);
+    const errorMessage =
+      redactedErrorMessage.length > 2000
+        ? `${redactedErrorMessage.slice(0, 2000)}…`
+        : redactedErrorMessage;
+    console.error(`Droid Exec failed: ${errorMessage}`);
+    core.setOutput("error_message", errorMessage);
+    core.setOutput("conclusion", "failure");
+    if (options.isolatedProfile)
+      throw new IsolatedDroidError(errorMessage, lastExitCode);
+    process.exit(lastExitCode);
+  }
+}

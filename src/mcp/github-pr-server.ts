@@ -1,0 +1,1167 @@
+#!/usr/bin/env node
+
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
+import { Octokit } from "@octokit/rest";
+import { GITHUB_API_URL } from "../github/api/config";
+import { withRequestRedaction } from "../github/api/client";
+import { updateGeneratedDescription } from "../core/review/fill";
+import { retryWithBackoff } from "../utils/retry";
+import { redactCredentials } from "../utils/redact-credentials";
+import { replyToPullRequestComment } from "../github/operations/comments/reply";
+export { replyToPullRequestComment };
+import { parseSecurityReport } from "../core/review/security-report";
+import { renderSecurityReport } from "../core/review/render";
+import { GITHUB_SERVER_URL } from "../github/api/config";
+import {
+  createGitHubCommentReview,
+  type GitHubReviewCommentPayload,
+} from "../github/operations/reviews";
+import {
+  parsePrValidationRunType,
+  type PrValidationRunType,
+} from "../run-type";
+
+const PLACEHOLDER_REGEX = /@droid\s+fill(?:\s+description)?/gi;
+const PLACEHOLDER_LINE_REGEX =
+  /^[^\S\r\n]*@droid\s+fill(?:\s+description)?[^\S\r\n]*\r?\n?/gim;
+
+export type UpdateMode = "replace" | "merge" | "generated" | "security-report";
+
+export interface UpdateDescriptionParams {
+  owner: string;
+  repo: string;
+  prNumber: number;
+  body: string;
+  mode: UpdateMode;
+  octokit: OctokitLike;
+}
+
+export type OctokitLike = {
+  rest: {
+    pulls: {
+      update: (...args: any[]) => Promise<any>;
+      get: (...args: any[]) => Promise<any>;
+      listReviewComments: (...args: any[]) => Promise<{ data: unknown[] }>;
+      createReview: (...args: any[]) => Promise<{ data: { id?: number } }>;
+      deleteReviewComment: (...args: any[]) => Promise<unknown>;
+      getReviewComment: (
+        ...args: any[]
+      ) => Promise<{ data: { node_id: string; pull_request_url?: string } }>;
+      createReplyForReviewComment: (
+        ...args: any[]
+      ) => Promise<{ data: unknown }>;
+    };
+    issues: {
+      listComments: (...args: any[]) => Promise<{ data: unknown[] }>;
+      deleteComment: (...args: any[]) => Promise<unknown>;
+      getComment: (...args: any[]) => Promise<{ data: { node_id: string } }>;
+      createComment: (...args: any[]) => Promise<{ data: unknown }>;
+    };
+  };
+  graphql?: (...args: any[]) => Promise<any>;
+};
+
+export function cleanDescription(text: string): string {
+  const withoutPlaceholderLines = text.replace(PLACEHOLDER_LINE_REGEX, "");
+
+  const withoutInlinePlaceholder = withoutPlaceholderLines.replace(
+    PLACEHOLDER_REGEX,
+    "",
+  );
+
+  let normalized = withoutInlinePlaceholder
+    // Collapse sequences of blank lines introduced by removal
+    .replace(/\n\s*\n+/g, "\n")
+    // Remove trailing blank lines
+    .replace(/\n+$/, "");
+
+  normalized = normalized.replace(/\n{3,}/g, "\n\n");
+
+  return normalized.trim();
+}
+
+export function extractIssueReferences(text: string): string[] {
+  const matches = text.match(
+    /(?:close[sd]?|fixe[sd]?|resolve[sd]?)[^#]*#\d+|#\d+/gi,
+  );
+  return matches ? Array.from(new Set(matches.map((m) => m.trim()))) : [];
+}
+
+export function mergeDescriptions(existing: string, generated: string): string {
+  const cleanedExisting = cleanDescription(existing);
+  const cleanedGenerated = cleanDescription(generated);
+
+  if (!cleanedExisting) {
+    return cleanedGenerated;
+  }
+
+  if (!cleanedGenerated) {
+    return cleanedExisting;
+  }
+
+  let finalBody = cleanedGenerated;
+
+  const references = extractIssueReferences(cleanedExisting);
+  if (references.length > 0) {
+    const missing = references.filter(
+      (ref) => !finalBody.toLowerCase().includes(ref.toLowerCase()),
+    );
+
+    if (missing.length > 0) {
+      const relatedIssuesRegex = /##\s+related issues[\s\S]*?(?=\n##\s|$)/i;
+      if (relatedIssuesRegex.test(finalBody)) {
+        finalBody = finalBody.replace(relatedIssuesRegex, (section) => {
+          const separator = section.endsWith("\n") ? "" : "\n";
+          return `${section}${separator}${missing.join("\n")}`;
+        });
+      } else {
+        finalBody = `${finalBody}\n\n## Related Issues\n${missing.join("\n")}`;
+      }
+    }
+  }
+
+  return finalBody;
+}
+
+export async function handleUpdatePRDescription({
+  owner,
+  repo,
+  prNumber,
+  body,
+  mode,
+  octokit,
+}: UpdateDescriptionParams): Promise<string> {
+  let finalBody: string;
+  const securityScan =
+    process.env.DROID_EXEC_RUN_TYPE === "droid-security-scan";
+  if (securityScan && mode !== "security-report")
+    throw new Error(
+      "Security scans may only publish security-report descriptions",
+    );
+
+  if (
+    mode === "generated" ||
+    process.env.DROID_EXEC_RUN_TYPE === "droid-fill"
+  ) {
+    const existing = await retryWithBackoff(
+      () =>
+        octokit.rest.pulls.get({
+          owner,
+          repo,
+          pull_number: prNumber,
+        }),
+      { initialDelayMs: 1000 },
+    );
+    finalBody = updateGeneratedDescription(
+      existing.data.body ?? "",
+      redactCredentials(body),
+      existing.data.head?.sha ?? "",
+    );
+  } else if (mode === "security-report") {
+    if (!securityScan) {
+      throw new Error(
+        "Security report descriptions are available only during a full security scan",
+      );
+    }
+    const sourceRevision = process.env.SECURITY_REPORT_SOURCE_REVISION ?? "";
+    const branch = process.env.SECURITY_REPORT_BRANCH ?? "";
+    const baseBranch = process.env.SECURITY_REPORT_BASE_BRANCH ?? "";
+    const author = process.env.SECURITY_REPORT_AUTHOR ?? "";
+    const actor = process.env.SECURITY_REPORT_ACTOR ?? "";
+    const triggerNumber = Number(process.env.SECURITY_REPORT_TRIGGER_NUMBER);
+    if (
+      !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(sourceRevision) ||
+      !branch.startsWith("droid/security-report-") ||
+      !baseBranch ||
+      !author ||
+      !actor ||
+      !Number.isSafeInteger(triggerNumber) ||
+      triggerNumber <= 0 ||
+      !Number.isSafeInteger(prNumber) ||
+      prNumber <= 0 ||
+      prNumber === triggerNumber
+    )
+      throw new Error(
+        "Security report requires its trusted scan context and explicit new report PR",
+      );
+    const { review: validated, provenance } = parseSecurityReport(
+      body,
+      sourceRevision,
+    );
+    const existing = await retryWithBackoff(
+      () => octokit.rest.pulls.get({ owner, repo, pull_number: prNumber }),
+      { initialDelayMs: 1000 },
+    );
+    const checkTarget = (data: any) => {
+      if (
+        data.state !== "open" ||
+        data.merged ||
+        data.head?.repo?.full_name?.toLowerCase() !==
+          `${owner}/${repo}`.toLowerCase() ||
+        data.base?.repo?.full_name?.toLowerCase() !==
+          `${owner}/${repo}`.toLowerCase() ||
+        data.head?.ref !== branch ||
+        data.base?.ref !== baseBranch ||
+        data.user?.login?.toLowerCase() !== author.toLowerCase() ||
+        !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(data.head?.sha ?? "")
+      )
+        throw new Error(
+          "Security report target does not match this scan's owned report PR",
+        );
+    };
+    checkTarget(existing.data);
+    finalBody = renderSecurityReport({
+      state: validated.findings.length ? "findings" : "clean",
+      findings: validated.findings,
+      summary: validated.summary,
+      head: existing.data.head?.sha,
+      securityReport: provenance,
+      repositoryUrl: `${GITHUB_SERVER_URL}/${owner}/${repo}`,
+    });
+    const live = await octokit.rest.pulls.get({
+      owner,
+      repo,
+      pull_number: prNumber,
+    });
+    checkTarget(live.data);
+    if (
+      live.data.head.sha !== existing.data.head.sha ||
+      live.data.body !== existing.data.body
+    )
+      throw new Error(
+        "Security report PR changed before publication; refusing a stale update",
+      );
+  } else if (mode === "merge") {
+    const existing = await octokit.rest.pulls.get({
+      owner,
+      repo,
+      pull_number: prNumber,
+    });
+
+    finalBody = mergeDescriptions(existing.data.body ?? "", body);
+  } else {
+    finalBody = cleanDescription(body);
+  }
+
+  if (!finalBody) {
+    finalBody = "";
+  }
+
+  await retryWithBackoff(
+    () =>
+      octokit.rest.pulls.update({
+        owner,
+        repo,
+        pull_number: prNumber,
+        body: finalBody,
+      }),
+    {
+      initialDelayMs: 1000,
+      // A failed/unknown scan PATCH cannot safely reuse the prior live snapshot.
+      ...(securityScan ? { maxAttempts: 1 } : {}),
+    },
+  );
+
+  return finalBody;
+}
+
+export async function listReviewAndIssueComments({
+  owner,
+  repo,
+  prNumber,
+  perPage = 100,
+  octokit,
+}: {
+  owner: string;
+  repo: string;
+  prNumber: number;
+  perPage?: number;
+  octokit: OctokitLike;
+}): Promise<{
+  issueComments: unknown[];
+  reviewComments: unknown[];
+}> {
+  const [issueComments, reviewComments] = await Promise.all([
+    octokit.rest.issues.listComments({
+      owner,
+      repo,
+      issue_number: prNumber,
+      per_page: perPage,
+    }),
+    octokit.rest.pulls.listReviewComments({
+      owner,
+      repo,
+      pull_number: prNumber,
+      per_page: perPage,
+    }),
+  ]);
+
+  return {
+    issueComments: issueComments.data,
+    reviewComments: reviewComments.data,
+  };
+}
+
+export type ReviewComment = GitHubReviewCommentPayload;
+
+/**
+ * Upper bound on `submit_review` calls that reach GitHub in one server
+ * process, successful or not. A failed post is not treated as "submitted"
+ * so a bad line anchor can be corrected and retried, which is why failures
+ * need their own ceiling.
+ */
+export const MAX_SUBMIT_REVIEW_ATTEMPTS = 5;
+
+/** Identity of an inline comment for duplicate detection. */
+export function reviewCommentKey(comment: ReviewComment): string {
+  return JSON.stringify([
+    comment.path,
+    comment.side ?? "RIGHT",
+    comment.line ?? null,
+    comment.body.trim(),
+  ]);
+}
+
+function pluralize(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+export type SubmittedReview = {
+  reviewId: number | undefined;
+  /** Keys (see {@link reviewCommentKey}) of every comment the review carried. */
+  commentKeys: Set<string>;
+  commentCount: number;
+};
+
+export type SubmitReviewGuard = {
+  /** The review this process has already posted, if any. */
+  readonly submitted: SubmittedReview | null;
+  /**
+   * Message to return instead of calling GitHub, or null when the call may
+   * proceed. Throws when the process has run out of attempts.
+   */
+  refusal(input: {
+    prNumber: number;
+    comments?: ReviewComment[];
+  }): string | null;
+  /** Atomically reserves one GitHub submission attempt. */
+  beginAttempt(): void;
+  recordSuccess(input: {
+    reviewId: number | undefined;
+    comments?: ReviewComment[];
+  }): void;
+  recordFailure(): void;
+};
+
+/**
+ * Makes `submit_review` idempotent for the lifetime of the MCP server
+ * process, which is exactly one `droid exec` run. Once one review has been
+ * created every further call is answered from memory with an explicit
+ * "already submitted" result and never reaches GitHub.
+ */
+export function createSubmitReviewGuard({
+  maxAttempts = MAX_SUBMIT_REVIEW_ATTEMPTS,
+}: { maxAttempts?: number } = {}): SubmitReviewGuard {
+  let submitted: SubmittedReview | null = null;
+  let attempts = 0;
+  let inFlight = false;
+
+  return {
+    get submitted() {
+      return submitted;
+    },
+
+    refusal() {
+      if (submitted) {
+        const reviewRef =
+          submitted.reviewId !== undefined
+            ? String(submitted.reviewId)
+            : "unknown";
+        return (
+          `A review with these ${submitted.commentCount} comments was already submitted as review ${reviewRef}. ` +
+          "Do not call submit_review again."
+        );
+      }
+
+      if (inFlight) {
+        return (
+          "A review submission is already in progress. " +
+          "Do not call submit_review again."
+        );
+      }
+
+      if (attempts >= maxAttempts) {
+        throw new Error(
+          `submit_review has been attempted ${pluralize(attempts, "time")} in this run without GitHub accepting the review, which is the maximum. ` +
+            "Refusing to call GitHub again. Do not call submit_review again; report the failure in the tracking comment and finish.",
+        );
+      }
+
+      return null;
+    },
+
+    beginAttempt() {
+      if (inFlight) {
+        throw new Error("A review submission is already in progress");
+      }
+      inFlight = true;
+      attempts += 1;
+    },
+
+    recordSuccess({ reviewId, comments }) {
+      inFlight = false;
+      const commentKeys = new Set<string>();
+      for (const comment of comments ?? []) {
+        commentKeys.add(reviewCommentKey(comment));
+      }
+      submitted = {
+        reviewId,
+        commentKeys,
+        commentCount: comments?.length ?? 0,
+      };
+    },
+
+    recordFailure() {
+      inFlight = false;
+    },
+  };
+}
+
+export type SubmitReviewOutcome = {
+  text: string;
+  /** True when the call was answered from memory or refused without posting. */
+  isError: boolean;
+};
+
+export async function handleSubmitReview({
+  owner,
+  repo,
+  prNumber,
+  body,
+  comments,
+  runType,
+  octokit,
+  guard,
+}: {
+  owner: string;
+  repo: string;
+  prNumber: number;
+  body?: string;
+  comments?: ReviewComment[];
+  runType?: PrValidationRunType;
+  octokit: OctokitLike;
+  guard: SubmitReviewGuard;
+}): Promise<SubmitReviewOutcome> {
+  const refusal = guard.refusal({ prNumber, comments });
+  if (refusal) {
+    return { text: refusal, isError: true };
+  }
+
+  const hasBody = Boolean(body?.trim());
+  const hasComments = (comments?.length ?? 0) > 0;
+  if (!hasComments) {
+    return {
+      text:
+        (hasBody
+          ? "submit_review requires approved inline comments; a body-only call does not publish a review. "
+          : "submit_review was called with no comments and no body, so there is nothing to post. ") +
+        "If there are no approved findings, do not call submit_review; update the tracking comment and finish.",
+      isError: true,
+    };
+  }
+
+  let reviewId: number | undefined;
+  guard.beginAttempt();
+  try {
+    reviewId = await submitReviewWithComments({
+      owner,
+      repo,
+      prNumber,
+      body,
+      comments,
+      runType,
+      octokit,
+    });
+    if (!Number.isSafeInteger(reviewId) || !reviewId || reviewId < 1)
+      throw new Error("GitHub did not return a published review ID");
+  } catch (error) {
+    guard.recordFailure();
+    throw error;
+  }
+  guard.recordSuccess({ reviewId, comments });
+
+  return {
+    text:
+      `Submitted review${reviewId !== undefined ? ` ${reviewId}` : ""} for PR #${prNumber} with ${pluralize(comments?.length ?? 0, "inline comment")}. ` +
+      "The review is posted. Do not call submit_review again.",
+    isError: false,
+  };
+}
+
+export async function submitReviewWithComments({
+  owner,
+  repo,
+  prNumber,
+  body,
+  comments,
+  runType,
+  octokit,
+}: {
+  owner: string;
+  repo: string;
+  prNumber: number;
+  body?: string;
+  comments?: ReviewComment[];
+  runType?: PrValidationRunType;
+  octokit: OctokitLike;
+}): Promise<number | undefined> {
+  return createGitHubCommentReview({
+    client: octokit,
+    owner,
+    repo,
+    prNumber,
+    body,
+    comments,
+    runType,
+  });
+}
+
+export async function deletePullRequestComment({
+  owner,
+  repo,
+  commentId,
+  type,
+  octokit,
+}: {
+  owner: string;
+  repo: string;
+  commentId: number;
+  type: "issue" | "review";
+  octokit: OctokitLike;
+}): Promise<void> {
+  if (type === "review") {
+    await octokit.rest.pulls.deleteReviewComment({
+      owner,
+      repo,
+      comment_id: commentId,
+    });
+    return;
+  }
+
+  await octokit.rest.issues.deleteComment({
+    owner,
+    repo,
+    comment_id: commentId,
+  });
+}
+
+const MINIMIZE_ALLOWED_CLASSIFIERS = [
+  "OUTDATED",
+  "RESOLVED",
+  "SPAM",
+  "OFF_TOPIC",
+  "DUPLICATE",
+  "ABUSE",
+] as const;
+
+export type MinimizeClassifier = (typeof MINIMIZE_ALLOWED_CLASSIFIERS)[number];
+
+export async function minimizeComment({
+  nodeId,
+  classifier,
+  octokit,
+}: {
+  nodeId: string;
+  classifier: MinimizeClassifier;
+  octokit: OctokitLike;
+}): Promise<void> {
+  if (!octokit.graphql) {
+    throw new Error("Octokit GraphQL client is not available");
+  }
+
+  await octokit.graphql(
+    `mutation MinimizeComment($subjectId: ID!, $classifier: ReportedContentClassifiers!) {
+      minimizeComment(input: { subjectId: $subjectId, classifier: $classifier }) {
+        minimizedComment {
+          isMinimized
+          minimizedReason
+        }
+      }
+    }`,
+    {
+      subjectId: nodeId,
+      classifier,
+    },
+  );
+}
+
+export async function resolveReviewThread({
+  owner,
+  repo,
+  commentId,
+  threadNodeId,
+  octokit,
+}: {
+  owner: string;
+  repo: string;
+  commentId?: number;
+  threadNodeId?: string;
+  octokit: OctokitLike;
+}): Promise<void> {
+  if (!octokit.graphql) {
+    throw new Error("Octokit GraphQL client is not available");
+  }
+
+  let targetThreadId = threadNodeId;
+  const previewHeaders = {
+    accept: "application/vnd.github.comfort-fade-preview+json",
+  };
+
+  if (!targetThreadId) {
+    if (!commentId) {
+      throw new Error("Either commentId or threadNodeId must be provided");
+    }
+
+    const reviewComment = await octokit.rest.pulls.getReviewComment({
+      owner,
+      repo,
+      comment_id: commentId,
+    });
+
+    const commentNodeId = reviewComment.data.node_id;
+    if (!commentNodeId) {
+      throw new Error("Unable to resolve node ID for review comment");
+    }
+
+    const prUrl = reviewComment.data.pull_request_url;
+    if (!prUrl) {
+      throw new Error("Unable to resolve pull request URL for review comment");
+    }
+
+    const prNumber = Number.parseInt(
+      prUrl.substring(prUrl.lastIndexOf("/") + 1),
+      10,
+    );
+    if (!Number.isFinite(prNumber)) {
+      throw new Error(
+        "Unable to resolve pull request number for review comment",
+      );
+    }
+
+    const threadLookupQuery = await octokit.graphql(
+      `query GetReviewThread($owner: String!, $repo: String!, $prNumber: Int!) {
+        repository(owner: $owner, name: $repo) {
+          pullRequest(number: $prNumber) {
+            reviewThreads(first: 100) {
+              nodes {
+                id
+                comments(first: 10) {
+                  nodes {
+                    id
+                  }
+                }
+              }
+            }
+          }
+        }
+      }`,
+      {
+        owner,
+        repo,
+        prNumber,
+        headers: previewHeaders,
+      },
+    );
+
+    const threads: Array<{
+      id?: string;
+      comments?: { nodes?: Array<{ id?: string }> };
+    }> = threadLookupQuery?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
+
+    for (const thread of threads) {
+      const comments = thread?.comments?.nodes ?? [];
+      if (
+        comments.some((comment) => comment?.id === commentNodeId) &&
+        thread?.id
+      ) {
+        targetThreadId = thread.id;
+        break;
+      }
+    }
+
+    if (!targetThreadId) {
+      throw new Error("Unable to resolve thread ID for review comment");
+    }
+  }
+
+  await octokit.graphql(
+    `mutation ResolveReviewThread($threadId: ID!) {
+      resolveReviewThread(input: { threadId: $threadId }) {
+        thread {
+          id
+          isResolved
+        }
+      }
+    }`,
+    {
+      threadId: targetThreadId,
+      headers: previewHeaders,
+    },
+  );
+}
+
+export interface ServerDependencies {
+  owner: string;
+  repo: string;
+  octokit: OctokitLike;
+  submitReviewGuard?: SubmitReviewGuard;
+}
+
+export function createGitHubPRServer({
+  owner,
+  repo,
+  octokit,
+  submitReviewGuard = createSubmitReviewGuard(),
+}: ServerDependencies) {
+  const server = new McpServer({
+    name: "GitHub PR Server",
+    version: "0.0.1",
+  });
+
+  server.tool(
+    "update_pr_description",
+    "Update the pull request description/body",
+    {
+      body: z.string().min(1).describe("The new PR description in markdown"),
+      mode: z
+        .enum(["replace", "merge", "generated", "security-report"])
+        .optional()
+        .default("replace")
+        .describe(
+          "Replace, merge, or update only the Droid-generated description region",
+        ),
+      pr_number: z.number().int().describe("PR number to update"),
+    },
+    async ({ body, mode, pr_number }) => {
+      try {
+        const updatedBody = await handleUpdatePRDescription({
+          owner,
+          repo,
+          prNumber: pr_number,
+          body,
+          mode,
+          octokit,
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `PR #${pr_number} description updated successfully`,
+            },
+            {
+              type: "text",
+              text: updatedBody,
+            },
+          ],
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error: ${message}`,
+            },
+          ],
+          error: message,
+          isError: true,
+        };
+      }
+    },
+  );
+
+  server.tool(
+    "list_review_comments",
+    "List review and issue comments for a PR",
+    {
+      pr_number: z.number().int().describe("PR number to inspect"),
+      per_page: z
+        .number()
+        .int()
+        .min(1)
+        .max(100)
+        .optional()
+        .describe("Results per page (default 100)"),
+    },
+    async ({ pr_number, per_page }) => {
+      try {
+        const result = await listReviewAndIssueComments({
+          owner,
+          repo,
+          prNumber: pr_number,
+          perPage: per_page,
+          octokit,
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result),
+            },
+          ],
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error: ${message}`,
+            },
+          ],
+          error: message,
+          isError: true,
+        };
+      }
+    },
+  );
+
+  server.tool(
+    "resolve_review_thread",
+    "Resolve a review thread by comment ID or thread node ID",
+    {
+      pr_number: z.number().int().describe("PR number containing the thread"),
+      comment_id: z
+        .number()
+        .int()
+        .optional()
+        .describe("Review comment ID belonging to the thread"),
+      thread_node_id: z
+        .string()
+        .optional()
+        .describe("GraphQL node ID of the review thread"),
+    },
+    async ({ pr_number, comment_id, thread_node_id }) => {
+      try {
+        const hasCommentId = typeof comment_id === "number";
+        const hasThreadId =
+          typeof thread_node_id === "string" && thread_node_id.length > 0;
+
+        if (hasCommentId === hasThreadId) {
+          throw new Error(
+            "Provide either comment_id or thread_node_id, but not both",
+          );
+        }
+
+        await resolveReviewThread({
+          owner,
+          repo,
+          commentId: comment_id,
+          threadNodeId: thread_node_id,
+          octokit,
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Review thread for PR #${pr_number} resolved successfully`,
+            },
+          ],
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error: ${message}`,
+            },
+          ],
+          error: message,
+          isError: true,
+        };
+      }
+    },
+  );
+
+  server.tool(
+    "submit_review",
+    "Submit a PR review with all inline comments batched into a single review. " +
+      "Use line/side to anchor comments to specific lines in the diff. " +
+      "This tool posts exactly one review per run: once a call succeeds, every " +
+      "further call is refused without posting anything.",
+    {
+      pr_number: z.number().int().describe("PR number to review"),
+      body: z.string().describe("Optional summary body").optional(),
+      comments: z
+        .array(
+          z.object({
+            path: z
+              .string()
+              .describe("The file path to comment on (e.g., 'src/index.js')"),
+            body: z
+              .string()
+              .min(1)
+              .describe(
+                "The comment text (supports markdown and GitHub code suggestion blocks)",
+              ),
+            line: z
+              .number()
+              .int()
+              .optional()
+              .describe(
+                "Line number for single-line comments, or end line for multi-line comments",
+              ),
+            side: z
+              .enum(["LEFT", "RIGHT"])
+              .optional()
+              .default("RIGHT")
+              .describe(
+                "Side of the diff: RIGHT for new/modified code, LEFT for removed code",
+              ),
+            start_line: z
+              .number()
+              .int()
+              .optional()
+              .describe("Start line for multi-line comments"),
+            start_side: z
+              .enum(["LEFT", "RIGHT"])
+              .optional()
+              .describe("Side for the start line of multi-line comments"),
+          }),
+        )
+        .max(30)
+        .describe("List of inline comments to include in the review")
+        .optional(),
+    },
+    async ({ pr_number, body, comments }) => {
+      try {
+        const runType = parsePrValidationRunType(
+          process.env.DROID_EXEC_RUN_TYPE,
+        );
+        const outcome = await handleSubmitReview({
+          owner,
+          repo,
+          prNumber: pr_number,
+          body,
+          comments,
+          runType,
+          octokit,
+          guard: submitReviewGuard,
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: outcome.text,
+            },
+          ],
+          ...(outcome.isError ? { error: outcome.text, isError: true } : {}),
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error: ${message}`,
+            },
+          ],
+          error: message,
+          isError: true,
+        };
+      }
+    },
+  );
+
+  server.tool(
+    "delete_comment",
+    "Delete an issue or review comment",
+    {
+      pr_number: z
+        .number()
+        .int()
+        .describe("PR number associated with the comment"),
+      comment_id: z.number().int().describe("ID of the comment to delete"),
+      type: z
+        .enum(["issue", "review"])
+        .default("issue")
+        .describe("Comment type: issue (top-level) or review (inline)"),
+    },
+    async ({ pr_number, comment_id, type }) => {
+      try {
+        await deletePullRequestComment({
+          owner,
+          repo,
+          commentId: comment_id,
+          type,
+          octokit,
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Deleted ${type} comment ${comment_id} on PR #${pr_number}`,
+            },
+          ],
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error: ${message}`,
+            },
+          ],
+          error: message,
+          isError: true,
+        };
+      }
+    },
+  );
+
+  server.tool(
+    "minimize_comment",
+    "Minimize a comment using GitHub's GraphQL API",
+    {
+      node_id: z.string().min(1).describe("GraphQL node ID of the comment"),
+      classifier: z
+        .enum(MINIMIZE_ALLOWED_CLASSIFIERS)
+        .default("OUTDATED")
+        .describe("Reason for minimization"),
+    },
+    async ({ node_id, classifier }) => {
+      try {
+        await minimizeComment({
+          nodeId: node_id,
+          classifier,
+          octokit,
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Minimized comment ${node_id} with classifier ${classifier}`,
+            },
+          ],
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error: ${message}`,
+            },
+          ],
+          error: message,
+          isError: true,
+        };
+      }
+    },
+  );
+
+  server.tool(
+    "reply_to_comment",
+    "Reply to an existing issue or review comment",
+    {
+      pr_number: z
+        .number()
+        .int()
+        .describe("PR number associated with the comment"),
+      comment_id: z.number().int().describe("ID of the comment to reply to"),
+      body: z.string().min(1).describe("Reply body"),
+      type: z
+        .enum(["issue", "review"])
+        .default("issue")
+        .describe("Comment type: issue (top-level) or review (inline)"),
+    },
+    async ({ pr_number, comment_id, body, type }) => {
+      try {
+        await replyToPullRequestComment({
+          owner,
+          repo,
+          prNumber: pr_number,
+          commentId: comment_id,
+          body,
+          type,
+          octokit,
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Posted reply to ${type} comment ${comment_id} on PR #${pr_number}`,
+            },
+          ],
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error: ${message}`,
+            },
+          ],
+          error: message,
+          isError: true,
+        };
+      }
+    },
+  );
+
+  return server;
+}
+
+async function runServer() {
+  const owner = process.env.REPO_OWNER;
+  const repo = process.env.REPO_NAME;
+  const token = process.env.GITHUB_TOKEN;
+
+  if (!owner || !repo) {
+    console.error(
+      "Error: REPO_OWNER and REPO_NAME environment variables are required",
+    );
+    process.exit(1);
+  }
+
+  if (!token) {
+    console.error("Error: GITHUB_TOKEN environment variable is required");
+    process.exit(1);
+  }
+
+  const octokit = withRequestRedaction(
+    new Octokit({
+      auth: token,
+      baseUrl: GITHUB_API_URL,
+    }),
+    token,
+  );
+
+  const server = createGitHubPRServer({ owner, repo, octokit });
+
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+
+  process.on("exit", () => {
+    server.close();
+  });
+}
+
+if (import.meta.main) {
+  runServer().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}
