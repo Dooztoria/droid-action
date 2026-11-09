@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+﻿#!/usr/bin/env bun
 
 /**
  * Deterministic GitHub posting step for the two-pass review pipeline.
@@ -346,7 +346,7 @@ export async function postGitHubReview(options: {
     ) {
       if (isPermissionError(error))
         (options.warn ?? core.warning)(
-          "Droid could not post inline comments. Check pull-requests: write permissions. Findings are preserved in the review summary.",
+          "Pahing`u{1F365} could not post inline comments. Check pull-requests: write permissions. Findings are preserved in the review summary.",
         );
       result.findings = findings.map((finding) => ({
         ...finding,
@@ -921,7 +921,7 @@ async function markPreviousReviewsStale(
   const viewer = await viewerLogin(octokit);
   if (!viewer) {
     warn(
-      "Droid could not verify the authenticated review author; previous reviews were not changed.",
+      "Pahing`u{1F365} could not verify the authenticated review author; previous reviews were not changed.",
     );
     return;
   }

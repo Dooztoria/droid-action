@@ -1,4 +1,4 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 import type { ReviewUxConfig } from "./config";
 export { UNTRUSTED_FINDING_PREAMBLE } from "./untrusted-findings";
 
@@ -46,16 +46,16 @@ export function chooseFixTarget(input: {
   fork: boolean;
 }): "commit" | "pr" {
   if (input.mode === "off")
-    throw new Error("@droid fix is disabled by fix_mode: off");
+    throw new Error("@pahing fix is disabled by fix_mode: off");
   if (!input.writable)
     throw new Error(
       input.fork
-        ? "Droid cannot fix this fork: the token has no write access to the fork repository. Ask a maintainer to enable a permitted write route or apply the AI-agent prompt manually."
-        : "Droid cannot publish this fix: contents: write access is required.",
+        ? "Pahing`u{1F365} cannot fix this fork: the token has no write access to the fork repository. Ask a maintainer to enable a permitted write route or apply the AI-agent prompt manually."
+        : "Pahing`u{1F365} cannot publish this fix: contents: write access is required.",
     );
   if (input.headBranch === input.defaultBranch) {
     throw new Error(
-      "Droid will not publish fixes to a repository's default branch. Use a non-default PR branch.",
+      "Pahing`u{1F365} will not publish fixes to a repository's default branch. Use a non-default PR branch.",
     );
   }
   return input.mode === "pr" || input.protected || input.fork ? "pr" : "commit";

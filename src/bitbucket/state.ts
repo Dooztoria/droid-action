@@ -1,4 +1,4 @@
-/**
+﻿/**
  * State shared between the Bitbucket review steps. Each step runs as its
  * own process, so every path resolves from the same environment variables.
  * The defaults sit outside the checked-out repository on purpose: a pull
@@ -43,7 +43,7 @@ export type BitbucketPrepareState = {
 };
 
 export const BUILD_STATUS_KEY = "droid-review";
-export const BUILD_STATUS_NAME = "Droid code review";
+export const BUILD_STATUS_NAME = "Pahing`u{1F365} code review";
 
 export function promptFilePath(): string {
   return process.env.DROID_PROMPT_FILE || "/tmp/droid-prompts/droid-prompt.txt";

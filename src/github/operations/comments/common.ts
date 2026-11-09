@@ -1,4 +1,4 @@
-import { GITHUB_SERVER_URL } from "../../api/config";
+﻿import { GITHUB_SERVER_URL } from "../../api/config";
 import { sanitizeContent } from "../../utils/sanitizer";
 import {
   decodeReviewState,
@@ -152,11 +152,11 @@ export function createCommentBody(
 ): string {
   let message: string;
   if (type === "review_and_security") {
-    message = "Droid is reviewing code and running a security check…";
+    message = "Pahing`u{1F365} is reviewing code and running a security check…";
   } else if (type === "security") {
-    message = "Droid is running a security check…";
+    message = "Pahing`u{1F365} is running a security check…";
   } else {
-    message = "Droid is working…";
+    message = "Pahing`u{1F365} is working…";
   }
 
   const body = `${message}

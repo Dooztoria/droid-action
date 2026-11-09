@@ -1,4 +1,4 @@
-import { GitlabApiError, type GitlabClient } from "../api/client";
+﻿import { GitlabApiError, type GitlabClient } from "../api/client";
 import type { GitlabDiscussion, GitlabMr } from "../types";
 import {
   findReviewSummaryRange,
@@ -193,7 +193,7 @@ export async function updateReviewStatus(
   try {
     await client.setCommitStatus(projectId, sha, {
       state,
-      name: "Droid Review",
+      name: "Pahing`u{1F365} Review",
       description: rendered.title.slice(0, 255),
       ...(input.jobUrl ? { target_url: input.jobUrl } : {}),
     });

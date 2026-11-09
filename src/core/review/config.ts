@@ -1,4 +1,4 @@
-import { parseDocument } from "yaml";
+﻿import { parseDocument } from "yaml";
 import { z } from "zod";
 import { normalizeReviewDepth } from "../../utils/review-depth";
 
@@ -311,7 +311,7 @@ export function automaticReviewSkipReason(options: {
 }): string | null {
   if (options.manual) return null;
   if (options.draft && !options.config.review_drafts)
-    return "draft PR. Comment @droid review to run anyway.";
+    return "draft PR. Comment @pahing review to run anyway.";
   if (
     options.eventAction &&
     !options.config.review_auto_triggers.includes(options.eventAction)

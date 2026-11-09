@@ -1,4 +1,4 @@
-/** Shared parser. Platform adapters decide whether free text is a thread question. */
+﻿/** Shared parser. Platform adapters decide whether free text is a thread question. */
 export type DroidCommand =
   | "fill"
   | "review"
@@ -114,7 +114,7 @@ export function withoutMarkdownCode(text: string): string {
 export function parseDroidCommand(text: string): ParsedCommand | null {
   if (!text) return null;
   const visible = withoutMarkdownCode(text);
-  const mentions = [...visible.matchAll(/(?<![\w@/])@droid(?![\w-])/gi)];
+  const mentions = [...visible.matchAll(/(?<![\w@/])@pahing(?![\w-])/gi)];
   let fallback: ParsedCommand | null = null;
   for (const mention of mentions) {
     const start = mention.index!;

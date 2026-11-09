@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+﻿#!/usr/bin/env bun
 
 import { createOctokit } from "../github/api/client";
 import * as fs from "fs/promises";
@@ -64,7 +64,7 @@ export async function run() {
                 process.env.DROID_VALIDATOR_ERROR_MESSAGE ||
                 process.env.DROID_ERROR_MESSAGE ||
                 process.env.PREPARE_ERROR ||
-                "The review failed. Check the job log and retry with @droid review."
+                "The review failed. Check the job log and retry with @pahing review."
               : lifecycle.renderInput
                 ? undefined
                 : "The review stopped before validated results were posted.",
@@ -258,7 +258,7 @@ export async function run() {
     );
     if (isPermissionError(error)) {
       console.warn(
-        `Droid could not update review metadata. Check pull-requests: write permissions. ${message}`,
+        `Pahing`u{1F365} could not update review metadata. Check pull-requests: write permissions. ${message}`,
       );
       return;
     }

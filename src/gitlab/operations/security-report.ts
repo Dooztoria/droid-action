@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+﻿import { randomUUID } from "node:crypto";
 import { parseDroidCommand } from "../../core/review/triggers/parse-command";
 import {
   renderSecurityReport,
@@ -24,7 +24,7 @@ export async function publishGitlabSecurityReport(
   ]);
   if (parseDroidCommand(note.body)?.command !== "security-full")
     throw new Error(
-      "Full security report requires an explicit @droid security --full command",
+      "Full security report requires an explicit @pahing security --full command",
     );
   const sourceProject = mr.source_project_id;
   if (!sourceProject)

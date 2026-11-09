@@ -69,7 +69,7 @@ export async function revertProtectedPaths(
   }
   await at($`git add -- ${violations}`.nothrow());
   await at(
-    $`git -c user.name=droid -c user.email=droid@factory.ai commit -m ${"revert(ci): restore protected paths modified by CI Steward"}`.nothrow(),
+    $`git -c user.name=pahing -c user.email=pahing@users.noreply.github.com commit -m ${"revert(ci): restore protected paths modified by CI Steward"}`.nothrow(),
   );
 }
 

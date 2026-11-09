@@ -1,4 +1,4 @@
-import type { PreparedContext } from "../types";
+﻿import type { PreparedContext } from "../types";
 
 export function generateFillPrompt(context: PreparedContext): string {
   const prNumber = context.eventData.isPR
@@ -29,7 +29,7 @@ Use the gathered information to write the description:
 - Base every statement on verified changes from the diff and context you collected.
 - Preserve important details already present in the existing description (ticket numbers, custom sections, links, manual notes). If uncertain about a detail, keep it as-is.
 - Do NOT infer, guess, or add ticket references (Linear, Jira, GitHub issues, etc.) that are not already explicitly present in the existing PR description, PR comments, or branch name. Never extract ticket IDs from commit messages or other indirect sources. If no ticket is linked, leave the section empty or omit it entirely.
-- Remove any placeholder text such as "@droid fill" before submitting.
+- Remove any placeholder text such as "@pahing fill" before submitting.
 - Keep the tone concise and factual. Use clear Markdown headings/bullets.
 - If a template is available, fill it out; otherwise structure the output as:
   ## Summary

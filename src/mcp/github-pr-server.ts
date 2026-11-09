@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -23,9 +23,9 @@ import {
   type PrValidationRunType,
 } from "../run-type";
 
-const PLACEHOLDER_REGEX = /@droid\s+fill(?:\s+description)?/gi;
+const PLACEHOLDER_REGEX = /@pahing\s+fill(?:\s+description)?/gi;
 const PLACEHOLDER_LINE_REGEX =
-  /^[^\S\r\n]*@droid\s+fill(?:\s+description)?[^\S\r\n]*\r?\n?/gim;
+  /^[^\S\r\n]*@pahing\s+fill(?:\s+description)?[^\S\r\n]*\r?\n?/gim;
 
 export type UpdateMode = "replace" | "merge" | "generated" | "security-report";
 
@@ -357,7 +357,7 @@ export type SubmitReviewGuard = {
 
 /**
  * Makes `submit_review` idempotent for the lifetime of the MCP server
- * process, which is exactly one `droid exec` run. Once one review has been
+ * process, which is exactly one `Pahing`u{1F365} exec` run. Once one review has been
  * created every further call is answered from memory with an explicit
  * "already submitted" result and never reaches GitHub.
  */

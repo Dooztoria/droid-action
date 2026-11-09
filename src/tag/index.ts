@@ -1,4 +1,4 @@
-import * as core from "@actions/core";
+﻿import * as core from "@actions/core";
 import { checkContainsTrigger } from "../github/validation/trigger";
 import { checkHumanActor } from "../github/validation/actor";
 import { createInitialComment } from "../github/operations/comments/create-initial";
@@ -315,7 +315,7 @@ export async function prepareTagExecution({
     });
   }
 
-  // @droid review or @droid (default) = code review only
+  // @pahing review or @pahing (default) = code review only
   if (
     commandContext?.command === "review" ||
     !commandContext ||

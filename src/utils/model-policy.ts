@@ -1,4 +1,4 @@
-import * as core from "@actions/core";
+﻿import * as core from "@actions/core";
 
 /**
  * Subset of the Factory org model policy returned by
@@ -225,7 +225,7 @@ export type PolicyCheckedModelConfig = {
 /**
  * Pre-flight check of a resolved model against the org's model policy.
  * When the model is disallowed, drops the model (and reasoning effort) so
- * `droid exec` falls back to the organization's default model, and returns
+ * `Pahing`u{1F365} exec` falls back to the organization's default model, and returns
  * a note describing the fallback for surfacing in the tracking comment.
  */
 export async function applyModelPolicyFallback(

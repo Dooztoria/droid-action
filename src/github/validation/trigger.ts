@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+﻿#!/usr/bin/env bun
 
 import * as core from "@actions/core";
 import {
@@ -17,11 +17,11 @@ export function checkContainsTrigger(context: ParsedGitHubContext): boolean {
     inputs: { triggerPhrase },
   } = context;
 
-  // Check for specific @droid commands (fill, review)
+  // Check for specific @pahing commands (fill, review)
   const command = extractCommandFromContext(context);
   if (command) {
     console.log(
-      `Detected @droid ${command.command} command, triggering action`,
+      `Detected @pahing ${command.command} command, triggering action`,
     );
     return true;
   }

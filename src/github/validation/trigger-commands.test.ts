@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+﻿import { describe, expect, it } from "bun:test";
 import { checkContainsTrigger } from "./trigger";
 import type { ParsedGitHubContext } from "../context";
 import type {
@@ -44,7 +44,7 @@ function createMockContext(
     entityNumber: 123,
     isPR: true,
     inputs: {
-      triggerPhrase: "@droid",
+      triggerPhrase: "@pahing",
       assigneeTrigger: "",
       labelTrigger: "",
       allowedBots: "",
@@ -62,13 +62,13 @@ function createMockContext(
 }
 
 describe("checkContainsTrigger with commands", () => {
-  it("should trigger on @droid fill in PR body", () => {
+  it("should trigger on @pahing fill in PR body", () => {
     const context = createMockContext({
       eventName: "pull_request",
       eventAction: "opened",
       payload: {
         pull_request: {
-          body: "This PR adds a new feature.\n\n@droid fill",
+          body: "This PR adds a new feature.\n\n@pahing fill",
           title: "Add feature",
           number: 123,
         },
@@ -78,13 +78,13 @@ describe("checkContainsTrigger with commands", () => {
     expect(checkContainsTrigger(context)).toBe(true);
   });
 
-  it("should trigger on @droid fill in issue comment", () => {
+  it("should trigger on @pahing fill in issue comment", () => {
     const context = createMockContext({
       eventName: "issue_comment",
       eventAction: "created",
       payload: {
         comment: {
-          body: "Can you @droid fill the description?",
+          body: "Can you @pahing fill the description?",
         },
       } as unknown as IssueCommentEvent,
     });
@@ -92,13 +92,13 @@ describe("checkContainsTrigger with commands", () => {
     expect(checkContainsTrigger(context)).toBe(true);
   });
 
-  it("should trigger on @droid review in PR review comment", () => {
+  it("should trigger on @pahing review in PR review comment", () => {
     const context = createMockContext({
       eventName: "pull_request_review_comment",
       eventAction: "created",
       payload: {
         comment: {
-          body: "@droid review this section please",
+          body: "@pahing review this section please",
         },
         pull_request: {
           number: 123,
@@ -109,13 +109,13 @@ describe("checkContainsTrigger with commands", () => {
     expect(checkContainsTrigger(context)).toBe(true);
   });
 
-  it("should trigger on @droid review in PR review body", () => {
+  it("should trigger on @pahing review in PR review body", () => {
     const context = createMockContext({
       eventName: "pull_request_review",
       eventAction: "submitted",
       payload: {
         review: {
-          body: "LGTM but @droid review the tests",
+          body: "LGTM but @pahing review the tests",
         },
         pull_request: {
           number: 123,
@@ -126,13 +126,13 @@ describe("checkContainsTrigger with commands", () => {
     expect(checkContainsTrigger(context)).toBe(true);
   });
 
-  it("should trigger on @droid security in issue comment", () => {
+  it("should trigger on @pahing security in issue comment", () => {
     const context = createMockContext({
       eventName: "issue_comment",
       eventAction: "created",
       payload: {
         comment: {
-          body: "Can you @droid security this PR?",
+          body: "Can you @pahing security this PR?",
         },
       } as unknown as IssueCommentEvent,
     });
@@ -140,13 +140,13 @@ describe("checkContainsTrigger with commands", () => {
     expect(checkContainsTrigger(context)).toBe(true);
   });
 
-  it("should not trigger on generic @droid without specific command", () => {
+  it("should not trigger on generic @pahing without specific command", () => {
     const context = createMockContext({
       eventName: "issue_comment",
       eventAction: "created",
       payload: {
         comment: {
-          body: "@droid can you help?",
+          body: "@pahing can you help?",
         },
       } as unknown as IssueCommentEvent,
     });
@@ -156,13 +156,13 @@ describe("checkContainsTrigger with commands", () => {
     expect(checkContainsTrigger(context)).toBe(true);
   });
 
-  it("should trigger on @droid fill case insensitive", () => {
+  it("should trigger on @pahing fill case insensitive", () => {
     const context = createMockContext({
       eventName: "issue_comment",
       eventAction: "created",
       payload: {
         comment: {
-          body: "@DROID FILL",
+          body: "@pahing FILL",
         },
       } as unknown as IssueCommentEvent,
     });
@@ -170,7 +170,7 @@ describe("checkContainsTrigger with commands", () => {
     expect(checkContainsTrigger(context)).toBe(true);
   });
 
-  it("should not trigger without @droid mention", () => {
+  it("should not trigger without @pahing mention", () => {
     const context = createMockContext({
       eventName: "issue_comment",
       eventAction: "created",
@@ -184,14 +184,14 @@ describe("checkContainsTrigger with commands", () => {
     expect(checkContainsTrigger(context)).toBe(false);
   });
 
-  it("should trigger on @droid fill in issue body", () => {
+  it("should trigger on @pahing fill in issue body", () => {
     const context = createMockContext({
       eventName: "issues",
       eventAction: "opened",
       isPR: false,
       payload: {
         issue: {
-          body: "Issue description\n@droid fill",
+          body: "Issue description\n@pahing fill",
           title: "Bug report",
           number: 123,
         },

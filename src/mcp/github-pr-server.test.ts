@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+﻿import { describe, expect, it } from "bun:test";
 import {
   cleanDescription,
   createGitHubPRServer,
@@ -50,8 +50,8 @@ function createMockOctokit(
 }
 
 describe("github-pr-server", () => {
-  it("should remove @droid fill placeholder in cleanDescription", () => {
-    const input = "## Summary\n@droid fill\nActual content";
+  it("should remove @pahing fill placeholder in cleanDescription", () => {
+    const input = "## Summary\n@pahing fill\nActual content";
     expect(cleanDescription(input)).toBe("## Summary\nActual content");
   });
 
@@ -75,7 +75,7 @@ describe("github-pr-server", () => {
       owner: "test-owner",
       repo: "test-repo",
       prNumber: 123,
-      body: "## Description\n@droid fill\nActual content",
+      body: "## Description\n@pahing fill\nActual content",
       mode: "replace",
       octokit,
     });
@@ -140,7 +140,7 @@ describe("github-pr-server", () => {
       SECURITY_REPORT_SOURCE_REVISION: source,
       SECURITY_REPORT_BRANCH: branch,
       SECURITY_REPORT_BASE_BRANCH: "main",
-      SECURITY_REPORT_AUTHOR: "factory-droid[bot]",
+      SECURITY_REPORT_AUTHOR: "pahing[bot]",
       SECURITY_REPORT_ACTOR: "human",
       SECURITY_REPORT_TRIGGER_NUMBER: "41",
     };
@@ -153,7 +153,7 @@ describe("github-pr-server", () => {
         state: "open",
         merged: false,
         body: "Owned report placeholder",
-        user: { login: "factory-droid[bot]", type: "Bot" },
+        user: { login: "pahing[bot]", type: "Bot" },
         head: {
           sha: fixed,
           ref: branch,

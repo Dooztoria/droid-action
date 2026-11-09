@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+﻿#!/usr/bin/env bun
 
 /**
  * Prepare step of the Bitbucket review (Cloud and Data Center).
@@ -372,7 +372,7 @@ export async function run(
       headSha,
       statusUrl,
       "INPROGRESS",
-      "Droid is reviewing",
+      "Pahing`u{1F365} is reviewing",
       pr.sourceBranch || null,
     );
   }

@@ -1,5 +1,5 @@
-/**
- * Command parser for detecting specific @droid commands in GitHub
+﻿/**
+ * Command parser for detecting specific @pahing commands in GitHub
  * comments and PR bodies. The pure string-parsing portion is platform-
  * agnostic and lives in `src/core/review/triggers/parse-command.ts`;
  * this file owns the GitHub-payload-aware context extraction.

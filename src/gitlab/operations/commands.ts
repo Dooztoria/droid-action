@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+﻿import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -43,16 +43,16 @@ export const GITLAB_COMMAND_HELP = `### Droid commands
 
 | Command | Behavior |
 | --- | --- |
-| \`@droid review\` | Review new changes |
-| \`@droid review --full\` | Review the full MR |
-| \`@droid review <focus>\` | Focus the review |
-| \`@droid security\` / \`@droid review security\` | Security-focused MR review |
-| \`@droid fix\` | Fix the finding in this discussion, or all open findings |
-| \`@droid resolve\` | Resolve open Droid discussions |
-| \`@droid pause\` / \`@droid resume\` | Pause/resume automatic reviews |
-| \`@droid fill\` | Update only Droid's marked description block |
-| \`@droid <question>\` in a Droid discussion | Answer in this discussion |
-| \`@droid help\` | Show this table and effective settings |
+| \`@pahing review\` | Review new changes |
+| \`@pahing review --full\` | Review the full MR |
+| \`@pahing review <focus>\` | Focus the review |
+| \`@pahing security\` / \`@pahing review security\` | Security-focused MR review |
+| \`@pahing fix\` | Fix the finding in this discussion, or all open findings |
+| \`@pahing resolve\` | Resolve open Droid discussions |
+| \`@pahing pause\` / \`@pahing resume\` | Pause/resume automatic reviews |
+| \`@pahing fill\` | Update only Droid's marked description block |
+| \`@pahing <question>\` in a Droid discussion | Answer in this discussion |
+| \`@pahing help\` | Show this table and effective settings |
 
 GitLab note commands need the authenticated pipeline bridge described in the setup guide. Droid never approves or requests changes.`;
 
@@ -88,11 +88,11 @@ export const executeGitlabCommand: CommandExecution = async (prompt, mode) => {
     );
     if (result.status !== 0)
       throw new Error(
-        "Droid command execution failed; inspect the job log and retry",
+        "Pahing🍥 command execution failed; inspect the job log and retry",
       );
     const stat = await fs.lstat(output);
     if (!stat.isFile() || stat.size > 32 * 1024 * 1024)
-      throw new Error("Droid command output is not a bounded regular file");
+      throw new Error("Pahing🍥 command output is not a bounded regular file");
     return await fs.readFile(output, "utf8");
   } catch (error) {
     commandFailed = true;
@@ -128,7 +128,7 @@ export async function dispatchGitlabCommand(options: {
   const member = await client.getMember(projectId, note.author.id);
   if (!hasGitlabWriteAccess(member))
     throw new Error(
-      "Droid commands require an active GitLab Developer, Maintainer, or Owner",
+      "Pahing🍥 commands require an active GitLab Developer, Maintainer, or Owner",
     );
   const parsed = parseDroidCommand(note.body);
   if (!parsed) return { handled: true };
@@ -202,7 +202,7 @@ export async function dispatchGitlabCommand(options: {
       );
     await respond(
       parsed.command === "pause"
-        ? "Automatic Droid reviews are paused. Comment `@droid resume` to restart."
+        ? "Automatic Droid reviews are paused. Comment `@pahing resume` to restart."
         : "Automatic Droid reviews resumed; the automatic-run budget was reset.",
     );
     return { handled: true };
@@ -436,7 +436,7 @@ export async function publishGitlabFix(options: {
   });
   if (publishBranch.commit.id !== mr.diff_refs.head_sha)
     throw new Error("Source branch advanced during the fix; retry");
-  const branchName = `droid/fix-${mr.iid}-${randomUUID()}`;
+  const branchName = `pahing/fix-${mr.iid}-${randomUUID()}`;
   const commit = await client.createCommit(sourceProject, {
     branch: branchName,
     start_sha: mr.diff_refs.head_sha,

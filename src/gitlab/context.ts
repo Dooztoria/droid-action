@@ -1,4 +1,4 @@
-export type ParsedGitlabContext = {
+﻿export type ParsedGitlabContext = {
   serverUrl: string;
   apiUrl: string;
   pipelineId: string | null;
@@ -119,7 +119,7 @@ export function parseGitlabContext(): ParsedGitlabContext {
     inputs: {
       automaticReview: process.env.AUTOMATIC_REVIEW === "true",
       automaticSecurityReview: process.env.AUTOMATIC_SECURITY_REVIEW === "true",
-      triggerPhrase: process.env.TRIGGER_PHRASE ?? "@droid",
+      triggerPhrase: process.env.TRIGGER_PHRASE ?? "@pahing",
       reviewDepth: process.env.REVIEW_DEPTH ?? "deep",
       reviewModel: process.env.REVIEW_MODEL ?? "",
       reasoningEffort: process.env.REASONING_EFFORT ?? "",

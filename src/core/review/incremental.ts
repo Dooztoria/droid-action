@@ -1,4 +1,4 @@
-import type { ReviewFinding } from "./validated/types";
+﻿import type { ReviewFinding } from "./validated/types";
 import { buildUnifiedDiffIndex, type FileLineIndex } from "./validated/diff";
 
 export type IncrementalReviewState = {
@@ -39,7 +39,7 @@ export function planIncrementalReview(options: {
   if (options.automatic && state?.paused) {
     return {
       skipReason:
-        "Automatic reviews are paused. Comment `@droid resume` to restart.",
+        "Automatic reviews are paused. Comment `@pahing resume` to restart.",
     };
   }
   if (
@@ -49,7 +49,7 @@ export function planIncrementalReview(options: {
   ) {
     return {
       skipReason:
-        "Automatic review limit reached. Comment `@droid review` to run manually or `@droid resume` to reset the limit.",
+        "Automatic review limit reached. Comment `@pahing review` to run manually or `@pahing resume` to reset the limit.",
     };
   }
   if (!state?.head || options.full || options.incremental === false) return {};

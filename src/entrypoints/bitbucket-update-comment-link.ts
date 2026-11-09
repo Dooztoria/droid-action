@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+﻿#!/usr/bin/env bun
 
 /**
  * Final step, run whether or not the review succeeded: render the final
@@ -135,7 +135,7 @@ export async function run(
       state.headSha,
       state.buildUrl ?? state.prWebUrl,
       success ? "SUCCESSFUL" : "FAILED",
-      success ? "Droid review finished" : "Droid review failed",
+      success ? "Pahing`u{1F365} review finished" : "Pahing`u{1F365} review failed",
       state.sourceBranch,
     );
   }

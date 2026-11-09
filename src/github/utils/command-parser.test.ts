@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+﻿import { describe, expect, it } from "bun:test";
 import { parseDroidCommand, extractCommandFromContext } from "./command-parser";
 import type { GitHubContext, ParsedGitHubContext } from "../context";
 import type {
@@ -19,7 +19,7 @@ const baseContext: Omit<ParsedGitHubContext, "eventName" | "payload"> = {
   },
   actor: "test-user",
   inputs: {
-    triggerPhrase: "@droid",
+    triggerPhrase: "@pahing",
     assigneeTrigger: "",
     labelTrigger: "droid",
     useStickyComment: false,
@@ -55,85 +55,85 @@ function createContext<TPayload>(
 
 describe("Command Parser", () => {
   describe("parseDroidCommand", () => {
-    it("should detect @droid fill", () => {
-      const result = parseDroidCommand("Please @droid fill the description");
+    it("should detect @pahing fill", () => {
+      const result = parseDroidCommand("Please @pahing fill the description");
       expect(result?.command).toBe("fill");
-      expect(result?.raw).toBe("@droid fill");
+      expect(result?.raw).toBe("@pahing fill");
     });
 
-    it("should detect @droid fill with extra spaces", () => {
-      const result = parseDroidCommand("@droid    fill");
+    it("should detect @pahing fill with extra spaces", () => {
+      const result = parseDroidCommand("@pahing    fill");
       expect(result?.command).toBe("fill");
-      expect(result?.raw).toBe("@droid    fill");
+      expect(result?.raw).toBe("@pahing    fill");
     });
 
-    it("should be case insensitive for @droid fill", () => {
-      const result = parseDroidCommand("@DROID FILL the PR description");
+    it("should be case insensitive for @pahing fill", () => {
+      const result = parseDroidCommand("@pahing FILL the PR description");
       expect(result?.command).toBe("fill");
-      expect(result?.raw).toBe("@DROID FILL");
+      expect(result?.raw).toBe("@pahing FILL");
     });
 
-    it("should detect @droid review", () => {
-      const result = parseDroidCommand("Can you @droid review this PR?");
+    it("should detect @pahing review", () => {
+      const result = parseDroidCommand("Can you @pahing review this PR?");
       expect(result?.command).toBe("review");
-      expect(result?.raw).toBe("@droid review");
+      expect(result?.raw).toBe("@pahing review");
     });
 
-    it("should parse @droid review security as security", () => {
-      const result = parseDroidCommand("@droid review security");
+    it("should parse @pahing review security as security", () => {
+      const result = parseDroidCommand("@pahing review security");
       expect(result?.command).toBe("security");
-      expect(result?.raw).toBe("@droid review security");
+      expect(result?.raw).toBe("@pahing review security");
     });
 
-    it("should parse @droid security review as security", () => {
-      const result = parseDroidCommand("@droid security review");
+    it("should parse @pahing security review as security", () => {
+      const result = parseDroidCommand("@pahing security review");
       expect(result?.command).toBe("security");
-      expect(result?.raw).toBe("@droid security");
+      expect(result?.raw).toBe("@pahing security");
     });
 
-    it("should detect @droid security", () => {
-      const result = parseDroidCommand("Please @droid security this PR");
+    it("should detect @pahing security", () => {
+      const result = parseDroidCommand("Please @pahing security this PR");
       expect(result?.command).toBe("security");
-      expect(result?.raw).toBe("@droid security");
+      expect(result?.raw).toBe("@pahing security");
     });
 
-    it("should detect @droid security at end of text", () => {
-      const result = parseDroidCommand("Please run @droid security");
+    it("should detect @pahing security at end of text", () => {
+      const result = parseDroidCommand("Please run @pahing security");
       expect(result?.command).toBe("security");
-      expect(result?.raw).toBe("@droid security");
+      expect(result?.raw).toBe("@pahing security");
     });
 
-    it("should be case insensitive for @droid security", () => {
-      const result = parseDroidCommand("@DROID SECURITY");
+    it("should be case insensitive for @pahing security", () => {
+      const result = parseDroidCommand("@pahing SECURITY");
       expect(result?.command).toBe("security");
     });
 
-    it("should detect @droid security --full", () => {
-      const result = parseDroidCommand("@droid security --full");
+    it("should detect @pahing security --full", () => {
+      const result = parseDroidCommand("@pahing security --full");
       expect(result?.command).toBe("security-full");
-      expect(result?.raw).toBe("@droid security --full");
+      expect(result?.raw).toBe("@pahing security --full");
     });
 
-    it("should be case insensitive for @droid security --full", () => {
-      const result = parseDroidCommand("@DROID SECURITY --FULL");
+    it("should be case insensitive for @pahing security --full", () => {
+      const result = parseDroidCommand("@pahing SECURITY --FULL");
       expect(result?.command).toBe("security-full");
     });
 
     it("should prioritize security-full over security", () => {
-      const result = parseDroidCommand("@droid security --full this repo");
+      const result = parseDroidCommand("@pahing security --full this repo");
       expect(result?.command).toBe("security-full");
     });
 
     it("should prioritize specific commands over default", () => {
-      // If text has both @droid fill and just @droid, should detect fill
-      const result = parseDroidCommand("@droid please @droid fill this");
+      // If text has both @pahing fill and just @pahing, should detect fill
+      const result = parseDroidCommand("@pahing please @pahing fill this");
       expect(result?.command).toBe("fill");
     });
 
     it("should detect unknown text as an unknown command", () => {
-      const result = parseDroidCommand("@droid please implement this feature");
+      const result = parseDroidCommand("@pahing please implement this feature");
       expect(result?.command).toBe("unknown");
-      expect(result?.raw).toBe("@droid");
+      expect(result?.raw).toBe("@pahing");
     });
 
     it("should handle multiline text", () => {
@@ -141,7 +141,7 @@ describe("Command Parser", () => {
         "## Description",
         "This is a PR description",
         "",
-        "@droid fill",
+        "@pahing fill",
         "",
         "Some other content",
       ].join("\n");
@@ -154,7 +154,7 @@ describe("Command Parser", () => {
         const text = [
           "## Description",
           "",
-          `${" ".repeat(spaces)}@droid fill`,
+          `${" ".repeat(spaces)}@pahing fill`,
           "",
           "Some other content",
         ].join("\n");
@@ -162,7 +162,7 @@ describe("Command Parser", () => {
       });
     }
 
-    it("should return null for text without @droid", () => {
+    it("should return null for text without @pahing", () => {
       const result = parseDroidCommand("Please review this PR");
       expect(result).toBeNull();
     });
@@ -178,13 +178,13 @@ describe("Command Parser", () => {
       expect(result).toBeNull();
     });
 
-    it("should match @droid at the beginning of text", () => {
-      const result = parseDroidCommand("@droid fill");
+    it("should match @pahing at the beginning of text", () => {
+      const result = parseDroidCommand("@pahing fill");
       expect(result?.command).toBe("fill");
     });
 
-    it("should match @droid at the end of text", () => {
-      const result = parseDroidCommand("Please run @droid fill");
+    it("should match @pahing at the end of text", () => {
+      const result = parseDroidCommand("Please run @pahing fill");
       expect(result?.command).toBe("fill");
     });
   });
@@ -194,7 +194,7 @@ describe("Command Parser", () => {
       const context = createContext("pull_request", {
         action: "opened",
         pull_request: {
-          body: "PR description\n\n@droid fill",
+          body: "PR description\n\n@pahing fill",
           number: 1,
           title: "PR",
         },
@@ -210,7 +210,7 @@ describe("Command Parser", () => {
         {
           action: "opened",
           issue: {
-            body: "Issue description @droid review",
+            body: "Issue description @pahing review",
             title: "Issue",
             number: 1,
           },
@@ -226,7 +226,7 @@ describe("Command Parser", () => {
       const context = createContext("issue_comment", {
         action: "created",
         comment: {
-          body: "@droid fill please",
+          body: "@pahing fill please",
           created_at: "2024-01-01T00:00:00Z",
         },
         issue: {
@@ -244,7 +244,7 @@ describe("Command Parser", () => {
       const context = createContext("pull_request_review_comment", {
         action: "created",
         comment: {
-          body: "Can you @droid review this section?",
+          body: "Can you @pahing review this section?",
           created_at: "2024-01-01T00:00:00Z",
         },
         pull_request: {
@@ -261,7 +261,7 @@ describe("Command Parser", () => {
       const context = createContext("pull_request_review", {
         action: "submitted",
         review: {
-          body: "LGTM but @droid fill the description",
+          body: "LGTM but @pahing fill the description",
           submitted_at: "2024-01-01T00:00:00Z",
         },
         pull_request: {
@@ -278,7 +278,7 @@ describe("Command Parser", () => {
       const context = createContext("pull_request", {
         action: "opened",
         pull_request: {
-          body: "PR description\n\n@droid security",
+          body: "PR description\n\n@pahing security",
           number: 1,
           title: "PR",
         },
@@ -292,7 +292,7 @@ describe("Command Parser", () => {
       const context = createContext("issue_comment", {
         action: "created",
         comment: {
-          body: "@droid security --full",
+          body: "@pahing security --full",
           created_at: "2024-01-01T00:00:00Z",
         },
         issue: {
@@ -355,7 +355,7 @@ describe("Command Parser", () => {
       const context = createContext("issue_comment", {
         action: "created",
         comment: {
-          body: "@droid can you help with this?",
+          body: "@pahing can you help with this?",
           created_at: "2024-01-01T00:00:00Z",
         },
         issue: {

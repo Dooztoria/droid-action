@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+﻿#!/usr/bin/env bun
 
 import * as core from "@actions/core";
 import { GITHUB_API_URL } from "./api/config";
@@ -163,7 +163,7 @@ export async function revokeGitHubAppToken(token: string): Promise<void> {
 
 /**
  * Returns the provided override token, or exchanges the job's OIDC token for a
- * Factory Droid App token narrowed to `permissions` (the app's full set when
+ * Pahing`u{1F365} App token narrowed to `permissions` (the app's full set when
  * omitted).
  */
 export async function setupGitHubToken(

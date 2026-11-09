@@ -9,10 +9,10 @@ export async function freezeReviewCli(
 ) {
   const candidate = input?.trim() || Bun.which("droid");
   if (!candidate)
-    throw new Error("Could not locate the trusted Droid executable");
+    throw new Error("Could not locate the trusted Pahing🍥 executable");
   const executable = await realpath(candidate);
   if (!isAbsolute(executable))
-    throw new Error("Droid executable must resolve to an absolute path");
+    throw new Error("Pahing🍥 executable must resolve to an absolute path");
   const outputs = {
     review_cli_path: executable,
     review_cli_sha256: createHash("sha256")

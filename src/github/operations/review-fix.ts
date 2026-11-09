@@ -1,4 +1,4 @@
-import type { Octokits } from "../api/client";
+﻿import type { Octokits } from "../api/client";
 import { retryWithBackoff } from "../../utils/retry";
 import { redactCredentials } from "../../utils/redact-credentials";
 import {
@@ -38,7 +38,7 @@ export async function inspectFixDestination(
   );
   if (!["admin", "write", "maintain"].includes(permission.data.permission)) {
     throw new Error(
-      "@droid fix requires verified write access for the person requesting it",
+      "@pahing fix requires verified write access for the person requesting it",
     );
   }
   const pr = (
@@ -49,7 +49,7 @@ export async function inspectFixDestination(
   ).data;
   if (pr.state !== "open" || pr.head.sha !== expectedHead || !pr.head.repo) {
     throw new Error(
-      "The PR is closed, unavailable, or its head changed. Comment @droid fix again on the latest commit.",
+      "The PR is closed, unavailable, or its head changed. Comment @pahing fix again on the latest commit.",
     );
   }
   const headOwner = pr.head.repo.owner.login;
@@ -76,7 +76,7 @@ export async function inspectFixDestination(
       !["admin", "write", "maintain"].includes(headPermission.data.permission)
     ) {
       throw new Error(
-        "Droid cannot fix this fork: the requesting actor has no verified write access to the fork repository",
+        "Pahing`u{1F365} cannot fix this fork: the requesting actor has no verified write access to the fork repository",
       );
     }
   }
@@ -373,7 +373,7 @@ export async function publishReviewFix(
     );
   }
   const body = [
-    `Droid applied the selected fixes${url ? ` in [a stacked PR](${url})` : ` in commit \`${fixedCommit.sha}\``}.`,
+    `Pahing`u{1F365} applied the selected fixes${url ? ` in [a stacked PR](${url})` : ` in commit \`${fixedCommit.sha}\``}.`,
     prose(redactCredentials(proposal.summary)),
     "⚠️ Tests were not run. The restricted fix session cannot execute repository code. Run the PR's checks before merging.",
     details(
@@ -434,7 +434,7 @@ async function createStackedFix(
   proposal: FixProposal,
 ): Promise<string> {
   const { headOwner: owner, headRepo: repo, pr } = destination;
-  const branch = `droid/fix-${binding.prNumber}-${sha.slice(0, 12)}`;
+  const branch = `pahing/fix-${binding.prNumber}-${sha.slice(0, 12)}`;
   // Never retry a ref creation blindly. A collision is reusable only for this exact commit.
   try {
     await octokit.rest.git.createRef({
@@ -463,7 +463,7 @@ async function createStackedFix(
     )
   ).data;
   if (existing[0]) return existing[0].html_url;
-  const body = `Fixes selected Droid findings from ${binding.owner}/${binding.repo}#${binding.prNumber}.\n\n${prose(redactCredentials(proposal.summary))}\n\n⚠️ Tests were not run. Run the PR's checks before merging.\n\nBased on \`${binding.expectedHead}\`.`;
+  const body = `Fixes selected Pahing`u{1F365} findings from ${binding.owner}/${binding.repo}#${binding.prNumber}.\n\n${prose(redactCredentials(proposal.summary))}\n\n⚠️ Tests were not run. Run the PR's checks before merging.\n\nBased on \`${binding.expectedHead}\`.`;
   try {
     return (
       await octokit.rest.pulls.create({

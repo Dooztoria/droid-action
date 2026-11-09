@@ -1,4 +1,4 @@
-import * as core from "@actions/core";
+﻿import * as core from "@actions/core";
 import { lstat, readFile } from "fs/promises";
 import { createOctokit, type Octokits } from "../github/api/client";
 import { listDroidThreads } from "../github/operations/review-lifecycle";
@@ -50,7 +50,7 @@ export async function postCommand(
   try {
     if (!options.success)
       throw new Error(
-        "Droid could not finish this request. Please retry the command.",
+        "Pahing`u{1F365} could not finish this request. Please retry the command.",
       );
     const stat = await lstat(options.outputPath);
     if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 4 * 1024 * 1024)
@@ -109,7 +109,7 @@ export async function postCommand(
     );
     if (!replyAttempted)
       await reply(
-        `Droid could not ${options.mode === "fix" ? "publish this fix" : "answer this question"}. ${message}`,
+        `Pahing`u{1F365} could not ${options.mode === "fix" ? "publish this fix" : "answer this question"}. ${message}`,
       );
     throw new Error(message);
   }

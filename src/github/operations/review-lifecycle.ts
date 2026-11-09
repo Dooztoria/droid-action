@@ -1,4 +1,4 @@
-import * as fs from "fs/promises";
+﻿import * as fs from "fs/promises";
 import * as path from "path";
 import { execFileSync } from "child_process";
 import * as core from "@actions/core";
@@ -286,14 +286,14 @@ export async function loadBoundReviewLifecycle(
       (check.data.head_sha !== target.head ||
         !expectedCheckExternalId ||
         check.data.external_id !== expectedCheckExternalId ||
-        !["Droid Review", "Droid Security Review"].includes(check.data.name))
+        !["Pahing`u{1F365} Review", "Pahing`u{1F365} Security Review"].includes(check.data.name))
     )
       throw new Error(
         "The prepared check run does not belong to this reviewed commit.",
       );
     if (check) {
       run.checkId = checkId;
-      run.securityOnly = check.data.name === "Droid Security Review";
+      run.securityOnly = check.data.name === "Pahing`u{1F365} Security Review";
       run.completed = check.data.status === "completed";
     }
   }
@@ -873,7 +873,7 @@ export async function prepareReviewLifecycle(options: {
   const warn = lifecycleWarning(run);
   if (lookupFailed)
     warn(
-      "Droid could not read review metadata. Check pull-requests: write permissions; this review will continue without incremental memory.",
+      "Pahing`u{1F365} could not read review metadata. Check pull-requests: write permissions; this review will continue without incremental memory.",
     );
   const jobUrl = `${GITHUB_SERVER_URL}/${owner}/${repo}/actions/runs/${options.context.runId}`;
   run.checkId = await createReviewCheck({

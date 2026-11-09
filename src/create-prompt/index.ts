@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+﻿#!/usr/bin/env bun
 
 import * as core from "@actions/core";
 import { writeFile, mkdir } from "fs/promises";
@@ -82,7 +82,7 @@ export function prepareContext(
   reviewArtifacts?: ReviewArtifacts,
 ): PreparedContext {
   const repository = context.repository.full_name;
-  const triggerPhrase = context.inputs.triggerPhrase || "@droid";
+  const triggerPhrase = context.inputs.triggerPhrase || "@pahing";
 
   const commonFields: CommonFields = {
     repository,

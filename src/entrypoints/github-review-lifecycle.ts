@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+﻿#!/usr/bin/env bun
 import { createOctokit, type Octokits } from "../github/api/client";
 import {
   advanceReviewLifecycle,
@@ -40,7 +40,7 @@ export async function run(
       error:
         process.env.DROID_SUCCESS === "false"
           ? error ||
-            "The review did not complete. Check the job log and comment @droid review to retry."
+            "The review did not complete. Check the job log and comment @pahing review to retry."
           : !lifecycle.renderInput
             ? "The review stopped before validated results were posted."
             : undefined,

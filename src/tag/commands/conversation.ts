@@ -1,4 +1,4 @@
-import * as core from "@actions/core";
+﻿import * as core from "@actions/core";
 import { mkdir, mkdtemp, writeFile, readFile, realpath } from "fs/promises";
 import path from "path";
 import { createHash } from "crypto";
@@ -118,7 +118,7 @@ export async function prepareConversationCommand(options: {
       octokit,
       context,
       command.command === "pause"
-        ? "Automatic reviews are paused for this PR. Comment `@droid resume` to restart them. Manual reviews still work."
+        ? "Automatic reviews are paused for this PR. Comment `@pahing resume` to restart them. Manual reviews still work."
         : "Automatic reviews are enabled again for this PR.",
     );
     return completed("review_control");
@@ -132,7 +132,7 @@ export async function prepareConversationCommand(options: {
     await replyToCommand(
       octokit,
       context,
-      `Resolved ${count} Droid finding thread${count === 1 ? "" : "s"}.`,
+      `Resolved ${count} Pahing`u{1F365} finding thread${count === 1 ? "" : "s"}.`,
     );
     return completed("threads_resolved");
   }
@@ -143,7 +143,7 @@ export async function prepareConversationCommand(options: {
       octokit,
       context,
       fix
-        ? "No open Droid findings were found for this request. Run `@droid review` first."
+        ? "No open Droid findings were found for this request. Run `@pahing review` first."
         : renderCommandHelp(context),
     );
     return completed("no_droid_thread");
@@ -161,7 +161,7 @@ export async function prepareConversationCommand(options: {
     await replyToCommand(
       octokit,
       context,
-      "`@droid fix` is disabled by `fix_mode: off`. Use the finding's AI-agent prompt to apply a fix manually.",
+      "`@pahing fix` is disabled by `fix_mode: off`. Use the finding's AI-agent prompt to apply a fix manually.",
     );
     return completed("fix_disabled");
   }
@@ -207,7 +207,7 @@ export async function prepareConversationCommand(options: {
       await replyToCommand(
         octokit,
         context,
-        `Droid could not start this fix. ${redactCredentials(error instanceof Error ? error.message : String(error))}`,
+        `Pahing`u{1F365} could not start this fix. ${redactCredentials(error instanceof Error ? error.message : String(error))}`,
       );
       return completed("fix_refused");
     }

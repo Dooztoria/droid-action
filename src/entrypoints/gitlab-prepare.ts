@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+﻿#!/usr/bin/env bun
 
 /**
  * Prepare step for the GitLab CI/CD Component (Pass 1 of the two-pass
@@ -20,7 +20,7 @@
  *
  * Pass 2 is generated later by `gitlab-prepare-validator.ts`, which
  * reads this state file and overwrites the prompt file with the
- * Pass-2 content before the second `droid exec` invocation.
+ * Pass-2 content before the second `Pahing`u{1F365} exec` invocation.
  */
 
 import { spawnSync } from "child_process";
@@ -82,7 +82,7 @@ import {
 } from "../../base-action/src/utils/model-policy-error";
 
 /**
- * `droid exec` runs in the untrusted MR checkout and starts project MCP
+ * `Pahing`u{1F365} exec` runs in the untrusted MR checkout and starts project MCP
  * servers, so it is not handed the GitLab token. Like the
  * `env -u GITLAB_TOKEN -u OVERRIDE_GITLAB_TOKEN` passes in the CI template,
  * this is not isolation: a child running as the same user can still read the
@@ -98,7 +98,7 @@ export function withoutGitlabTokens(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 }
 
 /**
- * The CI template runs `droid exec` directly, so a tier alias that the
+ * The CI template runs `Pahing`u{1F365} exec` directly, so a tier alias that the
  * installed CLI predates would fail the review outright. Probe it with the
  * fast `--list-tools` path and swap in the equivalent concrete model.
  */
@@ -388,7 +388,7 @@ async function run(): Promise<void> {
     !config.automatic_review && automatic
       ? "automatic review is disabled"
       : mr.draft && automatic && !config.review_drafts
-        ? "draft MR. Comment @droid review to run anyway."
+        ? "draft MR. Comment @pahing review to run anyway."
         : plan.skipReason;
   const eventAction = previous?.head ? "synchronize" : "opened";
   if (!skipReason)
@@ -653,7 +653,7 @@ async function run(): Promise<void> {
         })
       : undefined;
 
-    // The template passes these to `droid exec --tag` verbatim; the shim's
+    // The template passes these to `Pahing`u{1F365} exec --tag` verbatim; the shim's
     // single quotes are stripped when it is sourced, so the value is raw JSON.
     // Both passes run inside this one job, so the job id is the run id.
     // GitLab has no separate security pipeline: `automatic_security_review`
