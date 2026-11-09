@@ -16,11 +16,11 @@ const AppTokenPermissionsSchema = z
   })
   .strict();
 
-/** Repository permissions a Pahing`u{1F365} App token can be narrowed to. */
+/** Repository permissions a Pahing🍥 App token can be narrowed to. */
 export type AppTokenPermissions = z.infer<typeof AppTokenPermissionsSchema>;
 
 /**
- * The narrowest Pahing`u{1F365} App token each flow of the full action can run
+ * The narrowest Pahing🍥 App token each flow of the full action can run
  * with. Workflows, checks, statuses and every other permission the app holds
  * stay off, so a leaked token reaches no further than the flow it was minted
  * for. Job logs and reruns go through the workflow token, never this one.

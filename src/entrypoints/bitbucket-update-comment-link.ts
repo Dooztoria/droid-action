@@ -135,7 +135,7 @@ export async function run(
       state.headSha,
       state.buildUrl ?? state.prWebUrl,
       success ? "SUCCESSFUL" : "FAILED",
-      success ? "Pahing`u{1F365} review finished" : "Pahing`u{1F365} review failed",
+      success ? "Pahing🍥 review finished" : "Pahing🍥 review failed",
       state.sourceBranch,
     );
   }

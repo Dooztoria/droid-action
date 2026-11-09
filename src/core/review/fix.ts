@@ -50,12 +50,12 @@ export function chooseFixTarget(input: {
   if (!input.writable)
     throw new Error(
       input.fork
-        ? "Pahing`u{1F365} cannot fix this fork: the token has no write access to the fork repository. Ask a maintainer to enable a permitted write route or apply the AI-agent prompt manually."
-        : "Pahing`u{1F365} cannot publish this fix: contents: write access is required.",
+        ? "Pahing🍥 cannot fix this fork: the token has no write access to the fork repository. Ask a maintainer to enable a permitted write route or apply the AI-agent prompt manually."
+        : "Pahing🍥 cannot publish this fix: contents: write access is required.",
     );
   if (input.headBranch === input.defaultBranch) {
     throw new Error(
-      "Pahing`u{1F365} will not publish fixes to a repository's default branch. Use a non-default PR branch.",
+      "Pahing🍥 will not publish fixes to a repository's default branch. Use a non-default PR branch.",
     );
   }
   return input.mode === "pr" || input.protected || input.fork ? "pr" : "commit";

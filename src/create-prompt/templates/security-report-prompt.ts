@@ -114,7 +114,7 @@ git add .
 git commit -m "fix(security): Security scan report - ${date}"
 git -c credential.helper= -c "credential.helper=!gh auth git-credential" push origin ${branchName}
 gh pr create --title "fix(security): Security scan report - ${date} (N findings)" \\
-  --body "Pahing`u{1F365} is preparing the validated security report.${notifyTeam ? ` cc ${notifyTeam}` : ""}"
+  --body "Pahing🍥 is preparing the validated security report.${notifyTeam ? ` cc ${notifyTeam}` : ""}"
 \`\`\`
 - Read the structured validator JSON, then call \`github_pr___update_pr_description\` with \`mode: "security-report"\`, the explicit new report PR's number (never the triggering issue or original PR number), and the exact JSON string as \`body\`. The TypeScript renderer distinguishes reported patches from manual remediation and links evidence to the original scan revision. Do not use replace/merge/generated mode, write a free-form PR findings index, or submit a review event.
 

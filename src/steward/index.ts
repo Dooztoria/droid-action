@@ -55,7 +55,7 @@ export type StewardComment = {
   user?: { id?: number; type?: string } | null;
 };
 
-// Prefer the Pahing`u{1F365} App ID, but keep the generic Bot fallback for
+// Prefer the Pahing🍥 App ID, but keep the generic Bot fallback for
 // comments made by custom GitHub Apps or tokens.
 export function isDroidAuthored(comment: StewardComment): boolean {
   return comment.user?.id === DROID_APP_BOT_ID || comment.user?.type === "Bot";

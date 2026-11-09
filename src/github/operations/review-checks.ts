@@ -65,7 +65,7 @@ export async function optionalGitHubOperation<T>(
     });
   } catch {
     warn(
-      "Pahing`u{1F365} could not update all review metadata. Check token permissions (checks: write and pull-requests: write). The review result is unchanged.",
+      "Pahing🍥 could not update all review metadata. Check token permissions (checks: write and pull-requests: write). The review result is unchanged.",
     );
     return undefined;
   }
@@ -94,7 +94,7 @@ export async function createReviewCheck(options: {
   const externalId = reviewCheckExternalId(options.runId, options.runAttempt);
   if (!externalId) {
     options.warn(
-      "Pahing`u{1F365} could not bind a check to this workflow run; no check was created.",
+      "Pahing🍥 could not bind a check to this workflow run; no check was created.",
     );
     return undefined;
   }
@@ -103,19 +103,19 @@ export async function createReviewCheck(options: {
       options.octokit.rest.checks.create({
         owner: options.owner,
         repo: options.repo,
-        name: options.securityOnly ? "Pahing`u{1F365} Security Review" : "Pahing`u{1F365} Review",
+        name: options.securityOnly ? "Pahing🍥 Security Review" : "Pahing🍥 Review",
         head_sha: options.head,
         external_id: externalId,
         status: "queued",
         ...(options.jobUrl ? { details_url: options.jobUrl } : {}),
         output: {
           title: "Queued…",
-          summary: "Pahing`u{1F365} is waiting to gather PR context.",
+          summary: "Pahing🍥 is waiting to gather PR context.",
         },
       }),
     () =>
       options.warn(
-        "Pahing`u{1F365} could not confirm check creation. It may have succeeded remotely; creation was not retried and no unrelated check will be adopted.",
+        "Pahing🍥 could not confirm check creation. It may have succeeded remotely; creation was not retried and no unrelated check will be adopted.",
       ),
     1,
   );
@@ -150,7 +150,7 @@ export async function updateReviewCheck(options: {
           : {}),
         output: {
           title: options.title,
-          summary: options.summary || "Pahing`u{1F365} Review",
+          summary: options.summary || "Pahing🍥 Review",
           ...(options.text ? { text: options.text } : {}),
         },
       }),

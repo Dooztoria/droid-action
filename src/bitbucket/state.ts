@@ -43,7 +43,7 @@ export type BitbucketPrepareState = {
 };
 
 export const BUILD_STATUS_KEY = "droid-review";
-export const BUILD_STATUS_NAME = "Pahing`u{1F365} code review";
+export const BUILD_STATUS_NAME = "Pahing🍥 code review";
 
 export function promptFilePath(): string {
   return process.env.DROID_PROMPT_FILE || "/tmp/droid-prompts/droid-prompt.txt";

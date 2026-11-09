@@ -372,7 +372,7 @@ export async function run(
       headSha,
       statusUrl,
       "INPROGRESS",
-      "Pahing`u{1F365} is reviewing",
+      "Pahing🍥 is reviewing",
       pr.sourceBranch || null,
     );
   }

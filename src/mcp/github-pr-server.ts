@@ -357,7 +357,7 @@ export type SubmitReviewGuard = {
 
 /**
  * Makes `submit_review` idempotent for the lifetime of the MCP server
- * process, which is exactly one `Pahing`u{1F365} exec` run. Once one review has been
+ * process, which is exactly one `Pahing🍥 exec` run. Once one review has been
  * created every further call is answered from memory with an explicit
  * "already submitted" result and never reaches GitHub.
  */

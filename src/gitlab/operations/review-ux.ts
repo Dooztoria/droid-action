@@ -193,7 +193,7 @@ export async function updateReviewStatus(
   try {
     await client.setCommitStatus(projectId, sha, {
       state,
-      name: "Pahing`u{1F365} Review",
+      name: "Pahing🍥 Review",
       description: rendered.title.slice(0, 255),
       ...(input.jobUrl ? { target_url: input.jobUrl } : {}),
     });

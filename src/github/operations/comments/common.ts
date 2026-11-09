@@ -152,11 +152,11 @@ export function createCommentBody(
 ): string {
   let message: string;
   if (type === "review_and_security") {
-    message = "Pahing`u{1F365} is reviewing code and running a security check…";
+    message = "Pahing🍥 is reviewing code and running a security check…";
   } else if (type === "security") {
-    message = "Pahing`u{1F365} is running a security check…";
+    message = "Pahing🍥 is running a security check…";
   } else {
-    message = "Pahing`u{1F365} is working…";
+    message = "Pahing🍥 is working…";
   }
 
   const body = `${message}

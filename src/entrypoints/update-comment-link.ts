@@ -258,7 +258,7 @@ export async function run() {
     );
     if (isPermissionError(error)) {
       console.warn(
-        `Pahing`u{1F365} could not update review metadata. Check pull-requests: write permissions. ${message}`,
+        `Pahing🍥 could not update review metadata. Check pull-requests: write permissions. ${message}`,
       );
       return;
     }

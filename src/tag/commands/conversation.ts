@@ -132,7 +132,7 @@ export async function prepareConversationCommand(options: {
     await replyToCommand(
       octokit,
       context,
-      `Resolved ${count} Pahing`u{1F365} finding thread${count === 1 ? "" : "s"}.`,
+      `Resolved ${count} Pahing🍥 finding thread${count === 1 ? "" : "s"}.`,
     );
     return completed("threads_resolved");
   }
@@ -207,7 +207,7 @@ export async function prepareConversationCommand(options: {
       await replyToCommand(
         octokit,
         context,
-        `Pahing`u{1F365} could not start this fix. ${redactCredentials(error instanceof Error ? error.message : String(error))}`,
+        `Pahing🍥 could not start this fix. ${redactCredentials(error instanceof Error ? error.message : String(error))}`,
       );
       return completed("fix_refused");
     }

@@ -124,7 +124,7 @@ export function updateCommentBody(input: CommentUpdateInput): string {
   // Extract content from the original comment body
   // First, remove the in-progress message (and support legacy wording),
   // including the automatic review/security variants, so a failed run does
-  // not keep saying "Pahing`u{1F365} is reviewing code…" under the error header.
+  // not keep saying "Pahing🍥 is reviewing code…" under the error header.
   const workingPattern =
     /Droid is (?:working|reviewing code and running a security check|reviewing code|running a security check)[…\.]{1,3}(?:\s*<img[^>]*>)?/i;
   let bodyContent = originalBody.replace(workingPattern, "").trim();

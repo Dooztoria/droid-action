@@ -76,7 +76,7 @@ export async function inspectFixDestination(
       !["admin", "write", "maintain"].includes(headPermission.data.permission)
     ) {
       throw new Error(
-        "Pahing`u{1F365} cannot fix this fork: the requesting actor has no verified write access to the fork repository",
+        "Pahing🍥 cannot fix this fork: the requesting actor has no verified write access to the fork repository",
       );
     }
   }
@@ -373,7 +373,7 @@ export async function publishReviewFix(
     );
   }
   const body = [
-    `Pahing`u{1F365} applied the selected fixes${url ? ` in [a stacked PR](${url})` : ` in commit \`${fixedCommit.sha}\``}.`,
+    `Pahing🍥 applied the selected fixes${url ? ` in [a stacked PR](${url})` : ` in commit \`${fixedCommit.sha}\``}.`,
     prose(redactCredentials(proposal.summary)),
     "⚠️ Tests were not run. The restricted fix session cannot execute repository code. Run the PR's checks before merging.",
     details(
@@ -463,7 +463,7 @@ async function createStackedFix(
     )
   ).data;
   if (existing[0]) return existing[0].html_url;
-  const body = `Fixes selected Pahing`u{1F365} findings from ${binding.owner}/${binding.repo}#${binding.prNumber}.\n\n${prose(redactCredentials(proposal.summary))}\n\n⚠️ Tests were not run. Run the PR's checks before merging.\n\nBased on \`${binding.expectedHead}\`.`;
+  const body = `Fixes selected Pahing🍥 findings from ${binding.owner}/${binding.repo}#${binding.prNumber}.\n\n${prose(redactCredentials(proposal.summary))}\n\n⚠️ Tests were not run. Run the PR's checks before merging.\n\nBased on \`${binding.expectedHead}\`.`;
   try {
     return (
       await octokit.rest.pulls.create({

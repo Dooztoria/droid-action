@@ -20,7 +20,7 @@
  *
  * Pass 2 is generated later by `gitlab-prepare-validator.ts`, which
  * reads this state file and overwrites the prompt file with the
- * Pass-2 content before the second `Pahing`u{1F365} exec` invocation.
+ * Pass-2 content before the second `Pahing🍥 exec` invocation.
  */
 
 import { spawnSync } from "child_process";
@@ -82,7 +82,7 @@ import {
 } from "../../base-action/src/utils/model-policy-error";
 
 /**
- * `Pahing`u{1F365} exec` runs in the untrusted MR checkout and starts project MCP
+ * `Pahing🍥 exec` runs in the untrusted MR checkout and starts project MCP
  * servers, so it is not handed the GitLab token. Like the
  * `env -u GITLAB_TOKEN -u OVERRIDE_GITLAB_TOKEN` passes in the CI template,
  * this is not isolation: a child running as the same user can still read the
@@ -98,7 +98,7 @@ export function withoutGitlabTokens(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 }
 
 /**
- * The CI template runs `Pahing`u{1F365} exec` directly, so a tier alias that the
+ * The CI template runs `Pahing🍥 exec` directly, so a tier alias that the
  * installed CLI predates would fail the review outright. Probe it with the
  * fast `--list-tools` path and swap in the equivalent concrete model.
  */
@@ -653,7 +653,7 @@ async function run(): Promise<void> {
         })
       : undefined;
 
-    // The template passes these to `Pahing`u{1F365} exec --tag` verbatim; the shim's
+    // The template passes these to `Pahing🍥 exec --tag` verbatim; the shim's
     // single quotes are stripped when it is sourced, so the value is raw JSON.
     // Both passes run inside this one job, so the job id is the run id.
     // GitLab has no separate security pipeline: `automatic_security_review`

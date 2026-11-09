@@ -163,7 +163,7 @@ export async function revokeGitHubAppToken(token: string): Promise<void> {
 
 /**
  * Returns the provided override token, or exchanges the job's OIDC token for a
- * Pahing`u{1F365} App token narrowed to `permissions` (the app's full set when
+ * Pahing🍥 App token narrowed to `permissions` (the app's full set when
  * omitted).
  */
 export async function setupGitHubToken(
