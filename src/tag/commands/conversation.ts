@@ -25,21 +25,21 @@ import { replyToPullRequestComment } from "../../github/operations/comments/repl
 
 export function renderCommandHelp(context: ParsedGitHubContext): string {
   const config = context.inputs.reviewConfig ?? reviewConfigFromEnvironment();
-  return `### Droid commands
+  return `### Pahing🍥 commands
 
 | Command | What it does |
 | --- | --- |
-| \`@droid\` or \`@droid review\` | Review new changes (full on the first run) |
-| \`@droid review --full\` | Re-review the full PR |
-| \`@droid review <focus text>\` | Focus on a particular concern |
-| \`@droid security\` or \`@droid review security\` | Review security |
-| \`@droid security --full\` | Full repository security report |
-| \`@droid fix\` | Fix this finding in its thread, or all open findings at PR level |
-| \`@droid <question>\` in a Droid finding thread | Answer in that thread, without a new review |
-| \`@droid resolve\` | Resolve all Droid finding threads |
-| \`@droid pause\` / \`@droid resume\` | Pause / resume automatic reviews |
-| \`@droid fill\` | Update only Droid's generated description block |
-| \`@droid help\` | Show this table and current configuration |
+| \`@pahing\` or \`@pahing review\` | Review new changes (full on the first run) |
+| \`@pahing review --full\` | Re-review the full PR |
+| \`@pahing review <focus text>\` | Focus on a particular concern |
+| \`@pahing security\` or \`@pahing review security\` | Review security |
+| \`@pahing security --full\` | Full repository security report |
+| \`@pahing fix\` | Fix this finding in its thread, or all open findings at PR level |
+| \`@pahing <question>\` in a Pahing finding thread | Answer in that thread, without a new review |
+| \`@pahing resolve\` | Resolve all Pahing finding threads |
+| \`@pahing pause\` / \`@pahing resume\` | Pause / resume automatic reviews |
+| \`@pahing fill\` | Update only Pahing's generated description block |
+| \`@pahing help\` | Show this table and current configuration |
 
 <sub>Depth: ${config.review_depth} · Incremental: ${config.review_incremental} · Auto-resolve: ${config.review_auto_resolve} · Auto-run limit: ${config.review_max_auto_runs || "unlimited"} · Fix mode: ${config.fix_mode}</sub>`;
 }

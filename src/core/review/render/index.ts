@@ -53,10 +53,8 @@ import {
 
 const FACTORY_FIX_START = "<!-- droid-factory-fix:start -->";
 const FACTORY_FIX_END = "<!-- droid-factory-fix:end -->";
-const FACTORY_FIX_LABEL =
-  "![Fix in Factory](https://raw.githubusercontent.com/Factory-AI/droid-action/10fe8bc0f2decf0fba156ddb4235e5f89b79e7e4/assets/fix-in-factory.svg)";
-const LEGACY_FACTORY_FIX_LABEL =
-  "![Fix in Factory](https://img.shields.io/badge/Fix%20in%20Factory-ee6018?style=for-the-badge)";
+const FACTORY_FIX_LABEL = "";
+const LEGACY_FACTORY_FIX_LABEL = "";
 
 export function severityCounts(findings: ReviewFinding[]): SeverityCounts {
   return findings.reduce(
@@ -75,8 +73,8 @@ export function renderBadge(
 ): string {
   if (mode === "text") return `\`${label}\``;
   if (mode === "emoji")
-    return `${{ P0: "🔴", P1: "🟠", P2: "🟡", Security: "🔒" }[label]} ${label}`;
-  const color = { P0: "red", P1: "orange", P2: "yellow", Security: "blue" }[
+    return `${{ P0: "🔴", P1: "🔵", P2: "🩵", Security: "🔒" }[label]} ${label}`;
+  const color = { P0: "critical", P1: "4a90d9", P2: "87ceeb", Security: "1e3a5f" }[
     label
   ];
   return `<sub><img alt="${label}" src="https://img.shields.io/badge/${label}-${color}" height="18" align="top"></sub>`;
@@ -174,7 +172,7 @@ function countBreakdown(findings: ReviewFinding[]): string {
 }
 function footer(input: ReviewRenderInput): string {
   return `<sub>${[
-    `Reviewed by ${link("Droid", "https://factory.ai")} for commit ${sha(input.head)}${input.durationSeconds !== undefined ? ` in ${duration(input.durationSeconds)}` : ""}`,
+    `Reviewed by Pahing🍥 for commit ${sha(input.head)}${input.durationSeconds !== undefined ? ` in ${duration(input.durationSeconds)}` : ""}`,
     input.jobUrl ? link("View job", input.jobUrl) : "",
     input.configureUrl ? link("Configure", input.configureUrl) : "",
   ]
@@ -337,13 +335,13 @@ export function friendlyReviewError(
     return {
       message: "The Factory API key is missing or expired.",
       retry:
-        "Update the FACTORY_API_KEY secret, then comment `@droid review` to retry.",
+        "Update the FACTORY_API_KEY secret, then comment `@pahing review` to retry.",
     };
   if (/429|rate.?limit|quota|credit/.test(value))
     return {
       message: "A rate limit or usage quota stopped this review.",
       retry:
-        "Check your quota or wait for the limit to reset, then comment `@droid review` to retry.",
+        "Check your quota or wait for the limit to reset, then comment `@pahing review` to retry.",
     };
   if (/fork|secrets.*unavailable/.test(value))
     return {
@@ -353,14 +351,14 @@ export function friendlyReviewError(
     };
   if (/403|permission|forbidden|resource not accessible/.test(value))
     return {
-      message: "Droid does not have permission to finish this review.",
+      message: "Pahing does not have permission to finish this review.",
       retry:
-        "Check the actor and workflow token permissions, then comment `@droid review` to retry.",
+        "Check the actor and workflow token permissions, then comment `@pahing review` to retry.",
     };
   if (/too large|context.*limit|token.*limit/.test(value))
     return {
       message: "This change is too large to review in one run.",
-      retry: `Split the change into smaller ${platform === "gitlab" ? "MRs" : "PRs"}, then comment \`@droid review\` to retry.`,
+      retry: `Split the change into smaller ${platform === "gitlab" ? "MRs" : "PRs"}, then comment \`@pahing review\` to retry.`,
     };
   if (
     /diff.*(?:unavailable|missing)|not found|force.?push|bad revision/.test(
@@ -371,16 +369,16 @@ export function friendlyReviewError(
       message:
         "The reviewed diff is no longer available, possibly after a force-push.",
       retry:
-        "Wait for the latest push to finish, then comment `@droid review` to retry.",
+        "Wait for the latest push to finish, then comment `@pahing review` to retry.",
     };
   if (/timeout|timed out|deadline/.test(value))
     return {
       message: "The review timed out before it could finish.",
-      retry: `Comment \`@droid review\` to retry. Split a large ${platform === "gitlab" ? "MR" : "PR"} if this happens again.`,
+      retry: `Comment \`@pahing review\` to retry. Split a large ${platform === "gitlab" ? "MR" : "PR"} if this happens again.`,
     };
   return {
     message: "An unexpected error stopped the review.",
-    retry: "Check the job details, then comment `@droid review` to retry.",
+    retry: "Check the job details, then comment `@pahing review` to retry.",
   };
 }
 function previousReview(input: ReviewRenderInput): string {
@@ -456,7 +454,7 @@ function reviewSummaryBody(
   if (input.state === "skipped")
     return [
       markers,
-      `> [!IMPORTANT]\n> **Review skipped:** ${prose(input.skipReason ?? "No review was needed.")}\n>\n> Comment \`@droid review --full\` to request a full review.${input.jobUrl ? ` ${link("View job", input.jobUrl)}` : ""}`,
+      `> [!IMPORTANT]\n> **Review skipped:** ${prose(input.skipReason ?? "No review was needed.")}\n>\n> Comment \`@pahing review --full\` to request a full review.${input.jobUrl ? ` ${link("View job", input.jobUrl)}` : ""}`,
       previousReview(input),
       compactionNotice,
     ]
@@ -551,7 +549,7 @@ function reviewSummaryBody(
     !selected(input, "details") ? transparency(input, findings) : "",
     !selected(input, "details") ? footer(input) : "",
     findings.length
-      ? "<sub>Reply to a finding with a question, or comment `@droid fix` to apply valid fixes.</sub>"
+      ? "<sub>Reply to a finding with a question, or comment `@pahing fix` to apply valid fixes.</sub>"
       : "",
     compactionNotice,
     selected(input, "findings") && factoryFixEnabled && findings.length

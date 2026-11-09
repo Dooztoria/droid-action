@@ -155,7 +155,7 @@ export function parseGitHubContext(): GitHubContext {
     },
     actor: context.actor,
     inputs: {
-      triggerPhrase: process.env.TRIGGER_PHRASE ?? "@droid",
+      triggerPhrase: process.env.TRIGGER_PHRASE ?? "@pahing",
       assigneeTrigger: process.env.ASSIGNEE_TRIGGER ?? "",
       labelTrigger: process.env.LABEL_TRIGGER ?? "",
       useStickyComment: process.env.USE_STICKY_COMMENT === "true",

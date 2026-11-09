@@ -3,11 +3,11 @@ import { REVIEW_CONFIG_KEYS } from "../core/review/config";
 
 export function collectActionInputsPresence(): void {
   const inputDefaults: Record<string, string> = {
-    trigger_phrase: "@droid",
+    trigger_phrase: "@pahing",
     assignee_trigger: "",
     label_trigger: "",
     base_branch: "",
-    branch_prefix: "droid/",
+    branch_prefix: "pahing/",
     allowed_bots: "",
     mode: "tag",
     model: "",

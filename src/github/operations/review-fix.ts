@@ -300,7 +300,7 @@ export async function publishReviewFix(
           tree: newTree.sha,
           parents: [binding.expectedHead],
           message:
-            "fix(review): address Droid findings\n\nCo-authored-by: factory-droid[bot] <138933559+factory-droid[bot]@users.noreply.github.com>",
+            "fix(review): address Pahing🍥 findings",
         }),
       retryOptions,
     )
